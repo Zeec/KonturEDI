@@ -1,5 +1,5 @@
 IF OBJECT_ID(N'external_GetSellerXML', 'P') IS NOT NULL 
-  DROP PROCEDURE dbo.em_ExportItemList
+  DROP PROCEDURE dbo.external_GetSellerXML
 GO
 
 CREATE PROCEDURE dbo.external_GetSellerXML (
@@ -7,7 +7,6 @@ CREATE PROCEDURE dbo.external_GetSellerXML (
 	@SellerXML XML OUTPUT)
   
 AS
-
 /*
     <!-- начало блока данных о поставщике -->
     <seller>
@@ -40,6 +39,7 @@ AS
     </seller>
     <!-- конец блока данных о поставщике -->
 */
+
 /*SELECT TOP 1 @part_ID = R.strqt_part_ID_Out
 FROM KonturEDI.dbo.edi_Messages M
 JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
