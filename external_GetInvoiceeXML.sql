@@ -4,7 +4,7 @@ GO
 
 CREATE PROCEDURE dbo.external_GetInvoiceeXML  (
     @part_ID UNIQUEIDENTIFIER,
-	@BuyerXML XML OUTPUT)
+	@InvoiceeXML XML OUTPUT)
 AS
 /*
     <!-- начало блока с данными о получателе счёта -->
@@ -46,7 +46,7 @@ JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
 --JOIN tp_StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
 WHERE M.messageId = @messageId*/
 
-SET @BuyerXML = 
+SET @InvoiceeXML = 
 (
 	SELECT 
 	 	 dbo.f_MultiLanguageStringToStringByLanguage1(part_Description, 25) N'gln' --gln поставщика
@@ -73,6 +73,6 @@ SET @BuyerXML =
 	LEFT JOIN tp_Addresses A ON A.addr_obj_ID = F.firm_ID AND addr_Type = 2 -- CASE WHEN T2.part_firm_ID IS NULL THEN 3 ELSE 2 END AdddrType  -- рабочий (ФЛ) или юридический (ЮЛ) адрес
 	LEFT JOIN tp_People PD ON PD.pepl_ID = F.firm_pepl_ID_Director
 	WHERE part_ID = @part_ID
-	FOR XML PATH(N'buyer'), TYPE
+	FOR XML PATH(N'invoicee'), TYPE
 )
 
