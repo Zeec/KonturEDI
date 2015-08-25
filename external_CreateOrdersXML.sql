@@ -60,16 +60,17 @@ SELECT
 	,NULL N'typeOfUnit' --признак возвратной тары, если это не тара, то строки нет
 	,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.strqti_ItemName, P.pitm_Name), 25) N'description' --название товара
 	,dbo.f_MultiLanguageStringToStringByLanguage1(I.strqti_Comment, 25) N'comment' --комментарий к товарной позиции
-	,dbo.f_MultiLanguageStringToStringByLanguage1(MI.meit_Name, 25) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+	-- ,dbo.f_MultiLanguageStringToStringByLanguage1(MI.meit_Name, 25) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+	,'PCE' N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
 	,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
 	,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
 	,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
-	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
-	,NULL N'netPrice' --цена товара без НДС
-	,I.strqti_Price N'netPriceWithVAT' --цена товара с НДС
+--	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
+	,I.strqti_Price N'netPrice' --цена товара без НДС
+	,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
 	,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
-	,NULL N'exciseDuty' --акциз товара
-	,I.strqti_VAT N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+	--,NULL N'exciseDuty' --акциз товара
+	,I.strqti_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
 	,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
 	,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
 FROM KonturEDI.dbo.edi_Messages M
@@ -77,13 +78,13 @@ JOIN tp_StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
 JOIN tp_ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
 JOIN tp_MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
 WHERE M.messageId = @messageId  --'AA215039-87FE-4EA6-B9B4-CAFE688864D1'
-FOR XML PATH(N'LineItem'), TYPE)
+FOR XML PATH(N'lineItem'), TYPE)
 
 
 
 SET @LineItems = (
 SELECT
-     'RUR' N'currencyISOCode' --код валюты (по умолчанию рубли)
+     'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
 	,@LineItem
     ,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
 	,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
@@ -92,7 +93,7 @@ FROM KonturEDI.dbo.edi_Messages M
 JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
 JOIN tp_StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
 WHERE M.messageId = @messageId
-FOR XML PATH(N'LineItems'), TYPE)
+FOR XML PATH(N'lineItems'), TYPE)
 
 
 -- seller
@@ -102,6 +103,7 @@ DECLARE
 	,@addr_ID UNIQUEIDENTIFIER
 
 DECLARE @seller XML, @buyer XML, @invoicee XML, @deliveryInfo XML
+DECLARE @strqt_DateInput DATETIME
 
 SELECT TOP 1 
      -- Поставщик
@@ -110,6 +112,7 @@ SELECT TOP 1
 	,@part_ID_Self = G.stgr_part_ID
 	-- Адрес склада
 	,@addr_ID = addr_ID
+	,@strqt_DateInput = strqt_DateInput
 FROM KonturEDI.dbo.edi_Messages M
 JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
 -- Склады
@@ -128,7 +131,7 @@ WHERE M.messageId = @messageId
 EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
 EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
 --EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
---EXEC external_GetDeliveryInfoXML @part_ID, @deliveryInfo OUTPUT
+EXEC external_GetDeliveryInfoXML @part_ID_Self, @strqt_DateInput, @deliveryInfo OUTPUT
 
 DECLARE @senderGLN NVARCHAR(MAX), @buyerGLN NVARCHAR(MAX)
 SET @senderGLN = @seller.value('(/seller/gln)[1]', 'NVARCHAR(MAX)')
@@ -163,7 +166,7 @@ SET @Result=
 				   ,N'Original' N'@status'
 				   ,NULL N'@revisionNumber'
 				   
-				   ,'promotionDealNumber' N'promotionDealNumber'
+				   ,NULL N'promotionDealNumber'
 				   ,@seller
 				   ,@buyer
 				   ,@invoicee
@@ -182,10 +185,16 @@ SET @Result=
 
 -- SELECT @Result 'FileData'
 -- SELECT CAST(@Result AS XML) 'FileData'
+
 DECLARE @File SYSNAME, @R NVARCHAR(MAX)
-SET @File = 'C:\Zee\Текущее\0_Срочное\Kontur\box\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
 
 SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
+
+
+SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
+EXEC dbo.external_SaveToFile @File, @R
+
+SET @File = 'C:\Zee\Текущее\0_Срочное\Kontur\box\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
 EXEC dbo.external_SaveToFile @File, @R
 
 SELECT CAST(@Result AS XML)
