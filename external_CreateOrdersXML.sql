@@ -1,5 +1,3 @@
---external_CreateOrdersXML
-
 IF OBJECT_ID(N'external_CreateOrdersXML', 'P') IS NOT NULL 
   DROP PROCEDURE dbo.external_CreateOrdersXML
 GO
@@ -26,29 +24,11 @@ FOR XML Path('eDIMessage'),Type
 </params>
 */
 
-/*SELECT messageId AS [eDIMessage/@id]
-    ,creationDateTime AS [eDIMessage/@creationDateTime]
-	,'a' AS [eDIMessage/interchangeHeader/@r]
-FROM KonturEDI.dbo.edi_Messages
-FOR XML Path(''), TYPE*/
-/*
-USE DBZee_9_5_0
-SELECT * FROM tp_StoreRequests
-
-insert into KonturEDI.dbo.edi_Messages (doc_ID)
-VALUES ('E0D262BC-2301-8245-99EB-309CC2802351')
-
-SELECT * FROM KonturEDI.dbo.edi_Messages WHERE doc_ID = 'E0D262BC-2301-8245-99EB-309CC2802351'
-
-*/
-
---USE DBZee_9_5_0
-
-
--- DECLARE @messageId UNIQUEIDENTIFIER = 'FB9D17A1-AC52-4200-A87C-FA78E95A33FD'
 
 DECLARE @LineItem XML, @LineItems XML
 
+-- Формирование файла-заказа ORDER
+--BEGIN TRY
 
 -- Элементы заказа
 SET @LineItem = (
@@ -124,14 +104,10 @@ JOIN tp_StoreGroups G ON G.stgr_ID = S.stor_stgr_ID
 LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
 WHERE M.messageId = @messageId
 
-
-
-
-
 EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
 EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
 --EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
-EXEC external_GetDeliveryInfoXML @part_ID_Self, @strqt_DateInput, @deliveryInfo OUTPUT
+EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @strqt_DateInput, @deliveryInfo OUTPUT
 
 DECLARE @senderGLN NVARCHAR(MAX), @buyerGLN NVARCHAR(MAX)
 SET @senderGLN = @seller.value('(/seller/gln)[1]', 'NVARCHAR(MAX)')
@@ -155,14 +131,17 @@ SET @Result=
 					'ORDERS' N'documentType'
 					,creationDateTime N'creationDateTime'
 					,creationDateTime N'creationDateTimeBySender'
-					,1 'IsTest'
+					,'1' N'documentId'
+					,NULL 'IsTest'
 				FOR XML PATH(N'interchangeHeader'), TYPE
 			)
 			,(
 			    SELECT 
 				--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
-				   R.strqt_Name N'@number'
-				   ,GETDATE() N'@date'
+				   -- R.strqt_Name N'@number'
+				    R.strqt_Name N'@number'
+				   ,R.strqt_Date N'@date'
+				   ,R.strqt_ID N'@id'
 				   ,N'Original' N'@status'
 				   ,NULL N'@revisionNumber'
 				   
@@ -183,19 +162,22 @@ SET @Result=
 		FOR XML RAW(N'EDIMessage')
 	)
 
--- SELECT @Result 'FileData'
--- SELECT CAST(@Result AS XML) 'FileData'
+	DECLARE @File SYSNAME, @R NVARCHAR(MAX)
 
-DECLARE @File SYSNAME, @R NVARCHAR(MAX)
+	SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
 
-SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
+	-- @messageId
 
+	SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
+	EXEC dbo.external_SaveToFile @File, @R
 
-SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
-EXEC dbo.external_SaveToFile @File, @R
-
-SET @File = 'C:\Zee\Текущее\0_Срочное\Kontur\box\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
-EXEC dbo.external_SaveToFile @File, @R
-
-SELECT CAST(@Result AS XML)
+	SET @File = 'C:\Zee\Текущее\0_Срочное\Kontur\box\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
+	--EXEC dbo.external_SaveToFile @File, @R
+    
+	-- Статус отправлен
+	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
+	SELECT CAST(@Result AS XML)
+--END TRY
+--BEGIN CATCH
+--END CATCH
 

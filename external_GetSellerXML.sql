@@ -65,22 +65,25 @@ SET @SellerXML =
 		
 		,P.part_ID N'additionalIdentificator'	
 		
-		,dbo.f_MultiLanguageStringToStringByLanguage1(firm_Phone, 25) N'additionalInfo/phone' --телефон контактного лица
-        ,'' N'additionalInfo/fax'--факс контактного лица
+		-- additionalInfo
+		,dbo.f_MultiLanguageStringToStringByLanguage1(PD.pepl_PhoneWork, 25) N'additionalInfo/phone' --телефон контактного лица
+        ,NULL N'additionalInfo/fax'--факс контактного лица
         ,firm_AccountNumber N'additionalInfo/bankAccountNumber'--номер счёта в банке
-        ,'' N'additionalInfo/bankName'--наименование банка
-        ,'' N'additionalInfo/BIK'--БИК
+        ,NULL N'additionalInfo/bankName'--наименование банка
+        ,NULL N'additionalInfo/BIK'--БИК
         ,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_SecondName, ''), 25) + ' ' +
 		 dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_FirstName, ''), 25) + ' ' +
 		 dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_Patronymic, ''), 25) N'additionalInfo/nameOfCEO'--ФИО руководителя организации
-        ,'' N'additionalInfo/orderContact'--ФИО контактного лица заказа
+        ,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_SecondName, ''), 25) + ' ' +
+		 dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_FirstName, ''), 25) + ' ' +
+		 dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_Patronymic, ''), 25) N'additionalInfo/orderContact'--ФИО контактного лица заказа
 		
-		FROM tp_Partners       P
-		LEFT JOIN tp_Firms     F ON F.firm_ID = P.part_firm_ID
-        LEFT JOIN tp_Addresses A ON A.addr_obj_ID = F.firm_ID AND addr_Type = 2 -- CASE WHEN T2.part_firm_ID IS NULL THEN 3 ELSE 2 END AdddrType  -- рабочий (ФЛ) или юридический (ЮЛ) адрес
-		LEFT JOIN tp_People PD ON PD.pepl_ID = F.firm_pepl_ID_Director
+		FROM tp_Partners        P
+		LEFT JOIN tp_Firms      F ON F.firm_ID = P.part_firm_ID
+        LEFT JOIN tp_Addresses  A ON A.addr_obj_ID = F.firm_ID AND addr_Type = 2 -- CASE WHEN T2.part_firm_ID IS NULL THEN 3 ELSE 2 END AdddrType  -- рабочий (ФЛ) или юридический (ЮЛ) адрес
+		LEFT JOIN tp_People    PD ON PD.pepl_ID = F.firm_pepl_ID_Director
 		WHERE part_ID = @part_ID
 		FOR XML PATH(N'seller'), TYPE
 	)
 
--- SELECT @seller
+-- SELECT @SellerXML
