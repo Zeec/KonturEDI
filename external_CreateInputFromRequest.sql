@@ -3,7 +3,9 @@ IF OBJECT_ID(N'external_CreateInputFromRequest', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_CreateInputFromRequest (
-    @strqt_ID UNIQUEIDENTIFIER)
+    @strqt_ID UNIQUEIDENTIFIER,
+	@name NVARCHAR(200),
+	@date DATETIME)
 AS
 /*
 DECLARE @PARAMETER_stor_ID_Value_0 UNIQUEIDENTIFIER
@@ -53,6 +55,13 @@ DECLARE
   @idoc_Name NVARCHAR(MAX),
   @idoc_Date DATETIME
 
+DECLARE
+     @nttp_ID_idoc_name UNIQUEIDENTIFIER = 'EA463965-C7AE-144F-AACD-2DCF0D3A9695'
+    ,@nttp_ID_idoc_date UNIQUEIDENTIFIER = 'C8AC8FD2-77AF-3F48-B476-0255C9562FA7'
+    ,@note_ID_idoc_name UNIQUEIDENTIFIER
+    ,@note_ID_idoc_date UNIQUEIDENTIFIER
+    ,@tpsyso_ID UNIQUEIDENTIFIER
+
 SELECT @idoc_ID = NEWID(), @idoc_Name = strqt_Name, @idoc_Date = GETDATE()
 FROM StoreRequests
 WHERE strqt_ID = @strqt_ID
@@ -90,6 +99,31 @@ JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_ID
 INSERT INTO StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
 SELECT sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume
 FROM #StoreRequestItemInputDocumentItems
+
+-- Заметки
+SELECT @tpsyso_ID = tpsyso_ID
+FROM sys_Objects
+WHERE tpsyso_Name like '%Приходная накладная%'
+
+SELECT @note_ID_idoc_name = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_idoc_name AND note_obj_ID = @idoc_ID
+SELECT @note_ID_idoc_date = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_idoc_date AND note_obj_ID = @idoc_ID
+--
+IF @note_ID_idoc_name IS NULL
+    INSERT INTO tp_Notes (note_ID, note_nttp_ID, note_obj_ID, note_item_ID, note_Value, note_tpsyso_ID)
+    VALUES(NEWID(), @nttp_ID_idoc_name, @idoc_ID, @idoc_ID, @name, @tpsyso_ID)
+ELSE 
+    UPDATE Notes
+	SET note_Value = @name 
+	WHERE note_ID = @note_ID_idoc_name
+--
+IF @note_ID_idoc_date IS NULL
+    INSERT INTO tp_Notes (note_ID, note_nttp_ID, note_obj_ID, note_item_ID, note_Value, note_tpsyso_ID)
+    VALUES(NEWID(), @nttp_ID_idoc_date, @idoc_ID, @idoc_ID, @date, @tpsyso_ID)
+ELSE 
+    UPDATE Notes
+	SET note_Value = @date 
+	WHERE note_ID = @note_ID_idoc_date
+--
 
 -- Сообщение
 INSERT INTO KonturEDI.dbo.edi_Messages (doc_ID, doc_Name, doc_Date, doc_Type, doc_ID_original)
