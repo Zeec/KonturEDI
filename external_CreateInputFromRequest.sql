@@ -57,6 +57,19 @@ SELECT @idoc_ID = NEWID(), @idoc_Name = strqt_Name, @idoc_Date = GETDATE()
 FROM StoreRequests
 WHERE strqt_ID = @strqt_ID
 
+IF OBJECT_ID('tempdb..#StoreRequestItemInputDocumentItems') IS NOT NULL DROP TABLE #StoreRequestItemInputDocumentItems
+
+CREATE TABLE #StoreRequestItemInputDocumentItems (
+	sriidi_ID UNIQUEIDENTIFIER,
+	sriidi_strqti_ID UNIQUEIDENTIFIER,
+	sriidi_idit_ID UNIQUEIDENTIFIER,
+	sriidi_Volume NUMERIC(18, 6))
+
+INSERT INTO #StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
+SELECT NEWID(), strqti_ID, NEWID(), strqti_Volume
+FROM StoreRequestItems
+WHERE strqti_strqt_ID = @strqt_ID
+
 -- Приход
 INSERT INTO InputDocuments (idoc_ID, idoc_stor_ID, idoc_part_ID, idoc_usr_ID, idoc_idst_ID, idoc_sens_ID, idoc_Date, idoc_Name, idoc_ExternalName, idoc_Description)
 SELECT @idoc_ID, strqt_stor_ID_In, strqt_part_ID_Out, strqt_usr_ID, 0, 0,  @idoc_Date, @idoc_Name, NULL, 'Автоматически создано'
@@ -67,11 +80,17 @@ WHERE strqt_ID = @strqt_ID
 INSERT INTO InputDocumentItems (idit_ID, idit_idoc_ID, idit_pitm_ID, idit_meit_ID, idit_ItemName, idit_Article, 
     idit_idtp_ID, idit_IdentifierCode, idit_Volume, idit_Price, idit_Sum, idit_VAT, idit_SumVAT, idit_EditIndex, 
 	idit_Comment, idit_Order)
-SELECT NEWID(), @idoc_ID, strqti_pitm_ID, strqti_meit_ID, strqti_ItemName, strqti_Article, 
+SELECT T.sriidi_idit_ID, @idoc_ID, strqti_pitm_ID, strqti_meit_ID, strqti_ItemName, strqti_Article, 
     strqti_idtp_ID, strqti_IdentifierCode, strqti_Volume, strqti_Price, strqti_Sum, strqti_VAT, strqti_SumVAT, strqti_EditIndex,
     strqti_Comment, strqti_Order
-FROM StoreRequestItems
-WHERE strqti_strqt_ID = @strqt_ID
+FROM #StoreRequestItemInputDocumentItems T
+JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_ID
 
+-- Связки
+INSERT INTO StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
+SELECT sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume
+FROM #StoreRequestItemInputDocumentItems
+
+-- Сообщение
 INSERT INTO KonturEDI.dbo.edi_Messages (doc_ID, doc_Name, doc_Date, doc_Type, doc_ID_original)
 SELECT @idoc_ID, @idoc_Name, @idoc_Date, 'input', @strqt_ID
