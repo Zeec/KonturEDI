@@ -1,3 +1,9 @@
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
 IF OBJECT_ID('external_EDIKontur', 'P') IS NOT NULL 
   DROP PROCEDURE dbo.external_EDIKontur
 GO

@@ -1,3 +1,9 @@
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
 IF OBJECT_ID('external_ExportRECADV', 'P') IS NOT NULL 
   DROP PROCEDURE dbo.external_ExportRECADV
 GO
@@ -76,6 +82,9 @@ AS
 */
 
 DECLARE @LineItem XML, @LineItems XML
+DECLARE
+     @nttp_ID_idoc_name UNIQUEIDENTIFIER = 'EA463965-C7AE-144F-AACD-2DCF0D3A9695'
+    ,@nttp_ID_idoc_date UNIQUEIDENTIFIER = 'C8AC8FD2-77AF-3F48-B476-0255C9562FA7'
 
 -- ‘ормирование файла-заказа ORDER
 --BEGIN TRY
@@ -183,22 +192,22 @@ SET @Result=
 			)
 			,(
 			    SELECT 
-				--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменЄнный/копи€/замена, номер исправлени€ дл€ заказа-замены
-				   -- R.strqt_Name N'@number'
+				   --номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменЄнный/копи€/замена, номер исправлени€ дл€ заказа-замены
 				    I.idoc_Name N'@number'
 				   ,CONVERT(NVARCHAR(MAX), I.idoc_Date, 127) N'@date'
-				   -- ќригинальный номер
+
+				   -- номер заказа, дата заказа
 				   ,R.strqt_Name N'originOrder/@number'
 				   ,CONVERT(NVARCHAR(MAX), R.strqt_Date, 127) N'originOrder/@date'
-				   --,I.idoc_ID N'@id'
-				   --,N'Original' N'@status'
-				   --,NULL N'@revisionNumber'
-				   
-				   ,NULL N'promotionDealNumber'
+
 				   -- ƒоговор
 				   ,C.pcntr_Name N'contractIdentificator/@number'
 				   ,CONVERT(NVARCHAR(MAX), C.pcntr_DateBegin, 127) N'contractIdentificator/@date'
-
+				   
+				   --номер накладной, дата накладной
+				   ,NN.note_Value N'despatchIdentificator/@number'
+				   ,CONVERT(NVARCHAR(MAX), ND.note_Value, 127) N'despatchIdentificator/@date'
+				   
 				   ,@seller
 				   ,@buyer
 				   ,@invoicee
@@ -211,8 +220,10 @@ SET @Result=
 
         FROM KonturEDI.dbo.edi_Messages M
 		JOIN InputDocuments             I ON I.idoc_ID  = M.doc_ID
-		JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID_original
+		JOIN StoreRequests              R ON R.strqt_ID = M.doc_ID_original
 		LEFT JOIN PartnerContracts      C ON C.pcntr_part_ID = I.idoc_part_ID
+		LEFT JOIN Notes                NN ON NN.note_obj_ID = I.idoc_ID AND NN.note_nttp_ID = @nttp_ID_idoc_name
+		LEFT JOIN Notes                ND ON ND.note_obj_ID = I.idoc_ID AND ND.note_nttp_ID = @nttp_ID_idoc_date
 		WHERE M.messageId = @messageId
 		FOR XML RAW(N'eDIMessage')
 	)

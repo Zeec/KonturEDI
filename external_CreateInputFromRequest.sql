@@ -1,3 +1,9 @@
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
 IF OBJECT_ID(N'external_CreateInputFromRequest', 'P') IS NOT NULL 
   DROP PROCEDURE dbo.external_CreateInputFromRequest
 GO
@@ -93,7 +99,7 @@ SELECT T.sriidi_idit_ID, @idoc_ID, strqti_pitm_ID, strqti_meit_ID, strqti_ItemNa
     strqti_idtp_ID, strqti_IdentifierCode, strqti_Volume, strqti_Price, strqti_Sum, strqti_VAT, strqti_SumVAT, strqti_EditIndex,
     strqti_Comment, strqti_Order
 FROM #StoreRequestItemInputDocumentItems T
-JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_ID
+JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_strqti_ID
 
 -- Связки
 INSERT INTO StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)

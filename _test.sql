@@ -4,12 +4,16 @@
 SET IsProcessed = 0
 where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
 
-EXEC tpsrv_logon 'sv', '1'
-
-EXEC external_EDIKontur
+--EXEC tpsrv_logon 'sv', '1'
+--EXEC external_EDIKontur
 
 --select newid()
-/*DECLARE @messageId UNIQUEIDENTIFIER
+/*
+select * from tp_Notetypes
+-- C8AC8FD2-77AF-3F48-B476-0255C9562FA7 дата
+-- EA463965-C7AE-144F-AACD-2DCF0D3A9695 номер
+
+DECLARE @messageId UNIQUEIDENTIFIER
 
 SELECT TOP 1 @messageId = messageId 
 FROM KonturEDI.dbo.edi_Messages M

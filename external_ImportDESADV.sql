@@ -1,3 +1,9 @@
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
 IF OBJECT_ID('external_ImportDESADV', 'P') IS NOT NULL 
   DROP PROCEDURE dbo.external_ImportDESADV
 GO
@@ -14,6 +20,7 @@ DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
 DECLARE @TRANCOUNT INT
 
 DECLARE @Result_XML XML, @Result_Text NVARCHAR(MAX), @FileName SYSNAME
+DECLARE @despatchAdvice_number NVARCHAR(MAX), @despatchAdvice_date DATETIME
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @Path, 1, 1
@@ -47,7 +54,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  n.value('interchangeHeader[1]/sender[1]', 'NVARCHAR(MAX)') AS 'senderGLN',
 	  n.value('interchangeHeader[1]/recipient[1]', 'NVARCHAR(MAX)') AS 'recipientGLN', 
 	  n.value('despatchAdvice[1]/@number', 'NVARCHAR(MAX)') AS 'despatchAdvice_number',
-	  n.value('despatchAdvice[1]/@date', 'NVARCHAR(MAX)') AS 'despatchAdvice_date',
+	  n.value('despatchAdvice[1]/@date', 'DATETIME') AS 'despatchAdvice_date',
 	  n.value('despatchAdvice[1]/@status', 'NVARCHAR(MAX)') AS 'orderResponse_status',
       n.value('despatchAdvice[1]/originOrder[1]/@number', 'NVARCHAR(MAX)') AS 'originOrder_number',
       n.value('despatchAdvice[1]/originOrder[1]/@date', 'NVARCHAR(MAX)') AS 'originOrder_date'
@@ -56,45 +63,18 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 	-- Надо бы проверку
 
-	--DECLARE @orderResponse_status NVARCHAR(MAX)
-	--SELECT @orderResponse_status = orderResponse_status FROM #Messages
-
-/*
-<?xml version="1.0" encoding="utf-8"?>
-<statusReport>
-  <reportDateTime>2015-08-27T14:30:59.648Z</reportDateTime>
-  <reportRecipient>2000000009780</reportRecipient>
-  <reportItem>
-    <messageId>abd85d38-e3d3-49fc-8815-9e0b76fbf8dc</messageId>
-    <documentId>abd85d38-e3d3-49fc-8815-9e0b76fbf8dc</documentId>
-    <messageSender>2000000009780</messageSender>
-    <messageRecepient>2000000009759</messageRecepient>
-    <documentType>ORDRSP</documentType>
-    <documentNumber>QMHN3T9FE1A0VLPO7</documentNumber>
-    <documentDate>2015-08-27</documentDate>
-    <statusItem>
-      <dateTime>2015-08-27T17:44:44.648Z</dateTime>
-      <stage>Checking</stage>
-      <state>Fail</state>
-      <error>Не обрабатывается УС</error>
-      <description>Не обрабатывается УС</description>
-    </statusItem>
-  </reportItem>
-</statusReport>
-*/
-
     -- Accepted/Rejected/Changed
 	BEGIN
-	  -- EXEC external_CreateInputFromRequest @doc_ID 
-
-	  SELECT * FROM #Messages
+	  
+	  SELECT @despatchAdvice_number = despatchAdvice_number, @despatchAdvice_date = despatchAdvice_date FROM #Messages
+	  
 	  -- Меняем статус на "Подтверждена"
 	  SELECT @doc_ID = doc_ID
 	  FROM #Messages
 	  JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
 
 	  -- Приходная накладная
-	  EXEC external_CreateInputFromRequest @doc_ID 
+	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date 
       -- Статус
 	  EXEC external_UpdateDocStatus @doc_ID, 'Создана приходная накладная'
 	  
