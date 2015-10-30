@@ -31,4 +31,9 @@ ELSE
     UPDATE Notes
 	SET note_Value = @Value 
 	WHERE note_ID = @note_ID
-   
+
+-- Log
+INSERT INTO Notes (note_ID, note_nttp_ID, note_obj_ID, note_item_ID, note_Value, note_tpsyso_ID)
+VALUES(NEWID(), '7A89CB1E-8976-0144-9A26-15D6246CB826', @doc_ID, @doc_ID, @Value, @tpsyso_ID)
+  
+
