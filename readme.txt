@@ -1,1 +1,0 @@
-Пока в качестве gtin будет pitm_Article
