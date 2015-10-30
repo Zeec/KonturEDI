@@ -1,0 +1,259 @@
+IF OBJECT_ID('external_ExportRECADV', 'P') IS NOT NULL 
+  DROP PROCEDURE dbo.external_ExportRECADV
+GO
+
+CREATE PROCEDURE dbo.external_ExportRECADV (
+  @messageId UNIQUEIDENTIFIER,
+  @Path NVARCHAR(255))
+WITH EXECUTE AS OWNER
+AS
+/*
+<eDIMessage id="messageId" creationDateTime="creationDateTime">  <!--идентификатор сообщения, время сообщения-->
+  <!-- начало заголовка сообщения -->
+  <interchangeHeader>
+    <sender>SenderGLN</sender>    <!--GLN отправителя сообщения-->
+    <recipient>RecipientGLN</recipient>   <!--GLN получателя сообщения-->
+    <documentType>RECADV</documentType>  <!--тип документа-->
+    <creationDateTime>creationDateTimeT00:00:00.000Z</creationDateTime> <!--дата и время создания сообщения-->
+    <creationDateTimeBySender>creationDateTimeBySenderT00:00:00.000Z</creationDateTimeBySender> <!--дата и время создания сообщения клиентом-->
+    <isTest>1</isTest>    <!--тестовый флаг-->
+  </interchangeHeader>
+  <!-- конец заголовка сообщения -->
+  <receivingAdvice number="recadvNumber" date="recadvDate">  <!--номер приёмки, дата уведомления о приёмке-->
+    <originOrder number="ordersNumber" date="ordersDate" />      <!--номер заказа, дата заказа-->
+    <contractIdentificator number="contractNumber" date="contractDate" />
+    <!--номер договора/ контракта, дата договора/ контракта-->
+    <despatchIdentificator number="DespatchAdviceNumber" date="DespatchDate0000" />
+    <!--номер накладной, дата накладной-->
+    <blanketOrderIdentificator number="BlanketOrdersNumber" />     <!--номер серии заказов-->
+    <!-- начало блока данных о поставщике -->
+    <seller/>
+    <buyer/>
+    <invoicee/>
+    <deliveryInfo/>
+    <!-- конец блока данных о грузоотправителе и грузополучателе -->
+    <!-- начало блока с данными о товаре -->
+    <lineItems>
+      <lineItem>
+        <gtin>GTIN</gtin>       <!--GTIN товара-->
+        <internalBuyerCode>BuyerProductId</internalBuyerCode>     <!--внутренний код присвоенный покупателем-->
+        <internalSupplierCode>SupplierProductId</internalSupplierCode>
+        <!--артикул товара (код товара присвоенный продавцом)-->
+        <orderLineNumber>orderLineNumber</orderLineNumber>     <!--номер позиции в заказе-->
+        <typeOfUnit>RС</typeOfUnit>   <!--признак возвратной тары, если это не тара, то строки нет-->
+        <description>Name</description>         <!--наименование товара-->
+        <comment>LineItemComment</comment>          <!--комментарий к товарной позиции-->
+        <orderedQuantity unitOfMeasure="MeasurementUnitCode">OrderedQuantity</orderedQuantity>
+        <!--заказанное количество-->
+        <despatchedQuantity unitOfMeasure="MeasurementUnitCode">DespatchQuantity</despatchedQuantity>
+        <!--отгруженное поставщиком количество-->
+        <deliveredQuantity unitOfMeasure="MeasurementUnitCode">DesadvQuantity</deliveredQuantity>
+        <!--поставленное покупателю количество-->
+        <acceptedQuantity unitOfMeasure="MeasurementUnitCode">RecadvQuantity</acceptedQuantity>
+        <!--принятое количество-->
+        <onePlaceQuantity unitOfMeasure="MeasurementUnitCode">OnePlaceQuantity</onePlaceQuantity>
+        <!-- количество в одном месте (чему д.б. кратно общее кол-во) -->
+        <netPrice>Price</netPrice>     <!--цена единицы товара без НДС-->
+        <netPriceWithVAT>PriceWithVAT</netPriceWithVAT>     <!--цена единицы товара с НДС-->
+        <netAmount>PriceSummary</netAmount>      <!--сумма по позиции без НДС-->
+        <exciseDuty>exciseSum</exciseDuty>       <!--акциз товара-->
+        <vATRate>VATRate</vATRate>  <!--ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)-->
+        <vATAmount>vatSum</vATAmount>  <!--сумма НДС-->
+        <amount>PriceSummaryWithVAT</amount>       <!--сумма по позиции с НДС-->
+        <countryOfOriginISOCode>CountriesOfOriginCode</countryOfOriginISOCode>     <!--код страны производства-->
+        <customsDeclarationNumber>CustomDeclarationNumbers</customsDeclarationNumber>
+        <!--номер таможенной декларации-->
+      </lineItem>
+      <!-- каждая последующая товарная позиция должна идти в отдельном теге <lineItem> -->
+
+      <totalSumExcludingTaxes>RecadvTotal</totalSumExcludingTaxes>      <!--сумма без НДС-->
+      <totalAmount>RecadvTotalWithVAT</totalAmount>
+      <!--общая сумма по товарам, на которую начисляется НДС (125/86)-->
+      <totalVATAmount>RecadvTotalVAT</totalVATAmount>    <!--сумма НДС, значение берем из orders/ordrsp-->
+    </lineItems>
+  </receivingAdvice>
+</eDIMessage>
+*/
+
+DECLARE @LineItem XML, @LineItems XML
+
+-- Формирование файла-заказа ORDER
+--BEGIN TRY
+
+-- Элементы заказа
+SET @LineItem = (
+SELECT 
+     CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
+    ,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
+	,I.idit_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
+	,I.idit_Order N'lineNumber' --порядковый номер товара
+	,NULL N'typeOfUnit' --признак возвратной тары, если это не тара, то строки нет
+	,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.idit_ItemName, P.pitm_Name), 25) N'description' --название товара
+	,dbo.f_MultiLanguageStringToStringByLanguage1(I.idit_Comment, 25) N'comment' --комментарий к товарной позиции
+	-- ,dbo.f_MultiLanguageStringToStringByLanguage1(MI.meit_Name, 25) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+	,'PCE' N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+	,I.idit_Volume N'requestedQuantity/text()' --заказанное количество
+	,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
+	,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
+--	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
+	,I.idit_Price N'netPrice' --цена товара без НДС
+	,I.idit_Price+I.idit_Price*I.idit_VAT N'netPriceWithVAT' --цена товара с НДС
+	,I.idit_Sum N'netAmount' --сумма по позиции без НДС
+	--,NULL N'exciseDuty' --акциз товара
+	,I.idit_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+	,I.idit_SumVAT N'VATAmount' --сумма НДС по позиции
+	,I.idit_Sum+I.idit_SumVAT N'amount' --сумма по позиции с НДС
+FROM KonturEDI.dbo.edi_Messages M
+JOIN InputDocumentItems       I ON I.idit_idoc_ID = M.doc_ID
+JOIN ProductItems             P ON P.pitm_ID = I.idit_pitm_ID
+JOIN MeasureItems            MI ON MI.meit_ID = idit_meit_ID
+LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
+WHERE M.messageId = @messageId  
+FOR XML PATH(N'lineItem'), TYPE)
+
+select @LineItem
+
+SET @LineItems = (
+SELECT
+     'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
+	,@LineItem
+    ,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
+	,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
+	,SUM(strqti_Sum + strqti_SumVAT) N'totalAmount' -- --общая сумма заказа всего с НДС
+FROM KonturEDI.dbo.edi_Messages M
+JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
+JOIN tp_StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
+WHERE M.messageId = @messageId
+FOR XML PATH(N'lineItems'), TYPE)
+
+select @LineItems
+-- seller
+DECLARE 
+     @part_ID_Out UNIQUEIDENTIFIER
+	,@part_ID_Self UNIQUEIDENTIFIER
+	,@addr_ID UNIQUEIDENTIFIER
+
+DECLARE @seller XML, @buyer XML, @invoicee XML, @deliveryInfo XML
+DECLARE @idoc_Date DATETIME
+
+SELECT TOP 1 
+     -- Поставщик
+     @part_ID_Out = R.idoc_part_ID
+	 -- Своя организация
+	,@part_ID_Self = G.stgr_part_ID
+	-- Адрес склада
+	,@addr_ID = addr_ID
+	,@idoc_Date = idoc_Date
+FROM KonturEDI.dbo.edi_Messages M
+JOIN InputDocuments           R ON R.idoc_ID = M.doc_ID
+-- Склады
+JOIN Stores      S ON S.stor_ID = idoc_stor_ID
+JOIN StoreGroups G ON G.stgr_ID = S.stor_stgr_ID
+-- Своя организация
+-- LEFT JOIN tp_Partners SelfParnter ON SelfParnter.part_ID = stgr_part_ID
+-- Адрес склада
+LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
+WHERE M.messageId = @messageId
+
+EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
+EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
+--EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
+EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @idoc_Date, @deliveryInfo OUTPUT
+
+DECLARE @senderGLN NVARCHAR(MAX), @buyerGLN NVARCHAR(MAX)
+SET @senderGLN = @seller.value('(/seller/gln)[1]', 'NVARCHAR(MAX)')
+SET @buyerGLN = @buyer.value('(/buyer/gln)[1]', 'NVARCHAR(MAX)')
+select @senderGLN, @buyerGLN
+
+DECLARE @Result NVARCHAR(MAX)
+SET @Result=
+	(
+		SELECT
+			messageId N'id', 
+            creationDateTime N'creationDateTime',
+			(
+				SELECT
+					@buyerGLN N'sender',
+					@senderGLN N'recipient',
+					'RECADV' N'documentType'
+					,creationDateTime N'creationDateTime'
+					,creationDateTime N'creationDateTimeBySender'
+					,NULL 'IsTest'
+				FOR XML PATH(N'interchangeHeader'), TYPE
+			)
+			,(
+			    SELECT 
+				--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
+				   -- R.strqt_Name N'@number'
+				    I.idoc_Name N'@number'
+				   ,CONVERT(NVARCHAR(MAX), I.idoc_Date, 127) N'@date'
+				   -- Оригинальный номер
+				   ,R.strqt_Name N'originOrder/@number'
+				   ,CONVERT(NVARCHAR(MAX), R.strqt_Date, 127) N'originOrder/@date'
+				   --,I.idoc_ID N'@id'
+				   --,N'Original' N'@status'
+				   --,NULL N'@revisionNumber'
+				   
+				   ,NULL N'promotionDealNumber'
+				   -- Договор
+				   ,C.pcntr_Name N'contractIdentificator/@number'
+				   ,CONVERT(NVARCHAR(MAX), C.pcntr_DateBegin, 127) N'contractIdentificator/@date'
+
+				   ,@seller
+				   ,@buyer
+				   ,@invoicee
+				   ,@deliveryInfo
+				   ,@lineItems
+
+				FOR XML PATH(N'receivingAdvice'), TYPE
+            
+			)
+
+        FROM KonturEDI.dbo.edi_Messages M
+		JOIN InputDocuments             I ON I.idoc_ID  = M.doc_ID
+		JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID_original
+		LEFT JOIN PartnerContracts      C ON C.pcntr_part_ID = I.idoc_part_ID
+		WHERE M.messageId = @messageId
+		FOR XML RAW(N'eDIMessage')
+	)
+	
+	SELECT @Result
+	
+	DECLARE @File SYSNAME, @R NVARCHAR(MAX)
+
+	SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
+	SET @File = 'C:\kontur\Outbox\RECADV_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
+	SELECT @File
+DECLARE @TRANCOUNT INT
+
+  SET @TRANCOUNT = @@TRANCOUNT
+  IF @TRANCOUNT = 0
+	BEGIN TRAN external_ImportDESADV
+  ELSE
+	SAVE TRAN external_ImportDESADV
+
+  BEGIN TRY
+
+	EXEC dbo.external_SaveToFile @File, @R
+
+	-- Статус отправлен
+	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
+	SELECT CAST(@Result AS XML)
+	
+	
+ 	IF @TRANCOUNT = 0 
+	  COMMIT TRAN
+  END TRY
+  BEGIN CATCH
+    -- Ошибка загрузки файла, пишем ошибку приема
+	IF @@TRANCOUNT > 0
+	  IF (XACT_STATE()) = -1
+	    ROLLBACK
+	  ELSE
+	    ROLLBACK TRAN external_ImportDESADV
+	IF @TRANCOUNT > @@TRANCOUNT
+	  BEGIN TRAN
+
+	EXEC tpsys_ReraiseError
+END CATCH
+
