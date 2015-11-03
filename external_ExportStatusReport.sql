@@ -10,7 +10,9 @@ IF OBJECT_ID(N'external_ExportStatusReport', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_ExportStatusReport (
-     @FilePath NVARCHAR(MAX)
+     @message_ID UNIQUEIDENTIFIER
+	,@doc_ID UNIQUEIDENTIFIER
+    ,@FilePath NVARCHAR(MAX)
     ,@FileName_Original NVARCHAR(MAX)
     ,@state NVARCHAR(MAX)
     ,@description NVARCHAR(MAX)
@@ -36,8 +38,8 @@ BEGIN TRY
 	    SELECT 
 		   GETDATE() N'reportDateTime'
 		  ,senderGLN N'reportRecipient'
-		  ,messageId N'reportItem/messageId'
-		  ,messageId N'reportItem/documentId'
+		  ,msgId N'reportItem/messageId'
+		  ,msgId N'reportItem/documentId'
 		  ,senderGLN N'reportItem/messageSender'
 		  ,recipientGLN N'reportItem/messageRecepient'
 		  ,documentType N'reportItem/documentType'
@@ -54,14 +56,12 @@ BEGIN TRY
   	  
     SET @Result_Text = N'<?xml version="1.0" encoding="utf-8"?>' + CONVERT(NVARCHAR(MAX), @Result_XML)
 
-	SET @FileName = @FilePath+@state+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@FileName_Original AS NVARCHAR(MAX))+'.xml'
+	SET @FileName = @FilePath+@state+'_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@FileName_Original AS NVARCHAR(MAX))+'.xml'
 	EXEC dbo.external_SaveToFile @FileName, @Result_Text
 
-	--SET @File = @FilePath + @state + '_' + CAST(@messageId AS NVARCHAR(MAX)) + '.xml'
-	-- сообщение в логи
-    --INSERT INTO KonturEDI.dbo.edi_Messages (doc_ID, doc_Name, doc_Date, doc_Type)
-	--UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
-	--SELECT CAST(@Result AS XML)
+	-- Лог
+	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	VALUES (@Result_XML, 'Отправлено статусное сообщение '+@state, @message_ID, @doc_ID)
 
  	IF @TRANCOUNT = 0 
   	    COMMIT TRAN

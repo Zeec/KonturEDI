@@ -9,7 +9,8 @@ IF OBJECT_ID(N'external_ExportORDERS', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_ExportORDERS (
-    @messageId UNIQUEIDENTIFIER)
+     @messageId UNIQUEIDENTIFIER
+	,@doc_ID UNIQUEIDENTIFIER)
 AS
 DECLARE @TRANCOUNT INT
 DECLARE @LineItem XML, @LineItems XML
@@ -101,7 +102,7 @@ LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
 WHERE M.messageId = @messageId
 
 EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
-EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
+EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, 0, @buyer OUTPUT
 --EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
 EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @strqt_DateInput, @deliveryInfo OUTPUT
 
@@ -127,7 +128,6 @@ SET @Result=
 					'ORDERS' N'documentType'
 					,creationDateTime N'creationDateTime'
 					,creationDateTime N'creationDateTimeBySender'
-					,'1' N'documentId'
 					,NULL 'IsTest'
 				FOR XML PATH(N'interchangeHeader'), TYPE
 			)
@@ -136,7 +136,7 @@ SET @Result=
 				--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
 				   -- R.strqt_Name N'@number'
 				    R.strqt_Name N'@number'
-				   ,CONVERT(NVARCHAR(MAX), R.strqt_Date, 127) N'@date'
+				   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, R.strqt_Date), 127) N'@date'
 				   ,R.strqt_ID N'@id'
 				   ,N'Original' N'@status'
 				   ,NULL N'@revisionNumber'
@@ -144,17 +144,16 @@ SET @Result=
 				   ,NULL N'promotionDealNumber'
 				   -- Договор
 				   ,C.pcntr_Name N'contractIdentificator/@number'
-				   ,CONVERT(NVARCHAR(MAX), C.pcntr_DateBegin, 127) N'contractIdentificator/@date'
+				   ,CONVERT(NVARCHAR(MAX),  CONVERT(DATE, C.pcntr_DateBegin), 127) N'contractIdentificator/@date'
 				   ,@seller
 				   ,@buyer
 				   ,@invoicee
 				   ,@deliveryInfo
+				   -- информация о товарах
 				   ,@lineItems
 
 				FOR XML PATH(N'order'), TYPE
-            
 			)
-
         FROM KonturEDI.dbo.edi_Messages M
 		JOIN StoreRequests              R ON R.strqt_ID = M.doc_ID
 		LEFT JOIN PartnerContracts      C ON C.pcntr_part_ID = R.strqt_part_ID_Out
@@ -165,18 +164,14 @@ SET @Result=
 	DECLARE @File SYSNAME, @R NVARCHAR(MAX)
 
 	SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
-
-	-- @messageId
-
 	SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
 	EXEC dbo.external_SaveToFile @File, @R
 
-	-- SET @File = 'C:\Zee\Текущее\0_Срочное\Kontur\box\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
-	-- EXEC dbo.external_SaveToFile @File, @R
-    
 	-- Статус отправлен
 	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
-	SELECT CAST(@Result AS XML)
+	-- Лог
+	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	VALUES (@Result, 'Отправлена заявка поставщику', @messageId, @doc_ID)
 
  	IF @TRANCOUNT = 0 
   	    COMMIT TRAN

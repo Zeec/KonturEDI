@@ -13,7 +13,7 @@ CREATE PROCEDURE dbo.external_ImportORDRSP (
 WITH EXECUTE AS OWNER
 AS
 -- Прием сообщений
-DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(MAX), @messageId UNIQUEIDENTIFIER
+DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(MAX), @message_ID UNIQUEIDENTIFIER
 
 DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @Text NVARCHAR(255), @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @R INT
 DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
@@ -50,7 +50,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
   BEGIN TRY
 	-- Сообщение ORDRSP
     SELECT 
-	  n.value('@id', 'NVARCHAR(MAX)') AS 'messageId',
+	  n.value('@id', 'NVARCHAR(MAX)') AS 'msgId',
 	  n.value('interchangeHeader[1]/sender[1]', 'NVARCHAR(MAX)') AS 'senderGLN',
 	  n.value('interchangeHeader[1]/recipient[1]', 'NVARCHAR(MAX)') AS 'recipientGLN', 
 	  n.value('interchangeHeader[1]/documentType[1]', 'NVARCHAR(MAX)') AS 'documentType', 
@@ -64,17 +64,23 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 	-- Надо бы проверку на свои GLN
 
-	
-	SELECT @msg_status = msg_status FROM #Messages
-
- 	SELECT @doc_ID = doc_ID, @doc_Type = doc_Type
+	-- По какому документу пришли данные
+ 	SELECT 
+	     @msg_status = msg_status
+		,@message_ID = messageId
+		,@doc_ID = doc_ID
+		,@doc_Type = doc_Type
 	FROM #Messages
-	JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
+	LEFT JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
+
+	-- Лог
+	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	VALUES (@xml, 'Получено подтверждение заказа', @message_ID, @doc_ID)
 
     -- Accepted/Rejected/Changed
 	IF @msg_status = 'Changed' BEGIN
 	    -- Изменение заказов не поддерживается учетной системой
-        EXEC external_ExportStatusReport 'C:\Kontur\Outbox\', @fname, 'Fail', 'При обработке сообщения произошла ошибка', 'Изменение заказов не поддерживается учетной системой'
+        EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Fail', 'При обработке сообщения произошла ошибка', 'Изменение заказов не поддерживается учетной системой'
 	END
 	ELSE IF @msg_status = 'Rejected' BEGIN
  	  -- Поставить статус "заказ отменен"
@@ -82,7 +88,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
       
 	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Отвергнута'
 
-      EXEC external_ExportStatusReport 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
+      EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
 	ELSE IF @msg_status = 'Accepted' BEGIN
 	  -- Меняем статус на "Подтверждена"
@@ -90,7 +96,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Принята'
 
-      EXEC external_ExportStatusReport 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
+      EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
 
     SET @cmd = 'DEL /f /q "'+ @full_fname+'"'

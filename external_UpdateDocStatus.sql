@@ -11,7 +11,7 @@ GO
 CREATE PROCEDURE dbo.external_UpdateDocStatus (
      @doc_ID UNIQUEIDENTIFIER
 	,@doc_Type NVARCHAR(50)
-	,@Staus NVARCHAR(MAX)
+	,@Status NVARCHAR(MAX)
 	,@Date DATETIME = NULL)
 AS
 DECLARE 
@@ -35,7 +35,7 @@ IF @doc_Type = 'input'
 --
 SELECT @note_ID = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID AND note_obj_ID = @doc_ID
 --
-SET @Value = CONVERT(NVARCHAR(4000), CONVERT(NVARCHAR(MAX), ISNULL(@Date, GETDATE()), 127) + ' - ' + @Staus)
+SET @Value = CONVERT(NVARCHAR(4000), CONVERT(NVARCHAR(MAX), ISNULL(@Date, GETDATE()), 127) + ' - ' + @Status)
 
 -- Статус заявки
 IF @note_ID IS NOT NULL

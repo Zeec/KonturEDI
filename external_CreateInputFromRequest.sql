@@ -87,7 +87,7 @@ WHERE strqti_strqt_ID = @strqt_ID
 
 -- Приход
 INSERT INTO InputDocuments (idoc_ID, idoc_stor_ID, idoc_part_ID, idoc_usr_ID, idoc_idst_ID, idoc_sens_ID, idoc_Date, idoc_Name, idoc_ExternalName, idoc_Description)
-SELECT @idoc_ID, strqt_stor_ID_In, strqt_part_ID_Out, strqt_usr_ID, 0, 0,  @idoc_Date, @idoc_Name, NULL, 'Автоматически создано'
+SELECT @idoc_ID, strqt_stor_ID_In, strqt_part_ID_Out, strqt_usr_ID, 0, 0,  GETDATE(), @idoc_Name, NULL, 'Автоматически создано'
 FROM StoreRequests
 WHERE strqt_ID = @strqt_ID
 
@@ -114,7 +114,7 @@ WHERE tpsyso_Name like '%Приходная накладная%'
 SELECT @note_ID_idoc_name = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_idoc_name AND note_obj_ID = @idoc_ID
 SELECT @note_ID_idoc_date = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_idoc_date AND note_obj_ID = @idoc_ID
 --
-IF @note_ID_idoc_name IS NULL
+/*IF @note_ID_idoc_name IS NULL
     INSERT INTO tp_Notes (note_ID, note_nttp_ID, note_obj_ID, note_item_ID, note_Value, note_tpsyso_ID)
     VALUES(NEWID(), @nttp_ID_idoc_name, @idoc_ID, @idoc_ID, @name, @tpsyso_ID)
 ELSE 
@@ -128,7 +128,7 @@ IF @note_ID_idoc_date IS NULL
 ELSE 
     UPDATE Notes
 	SET note_Value = @date 
-	WHERE note_ID = @note_ID_idoc_date
+	WHERE note_ID = @note_ID_idoc_date*/
 --
 
 -- Сообщение

@@ -14,9 +14,9 @@ WITH EXECUTE AS OWNER
 AS
 DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
 
-DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @Text NVARCHAR(255), @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
+DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
 DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
-DECLARE @usr_ID_Msg UNIQUEIDENTIFIER
+--DECLARE @usr_ID_Msg UNIQUEIDENTIFIER
 DECLARE @TRANCOUNT INT
 DECLARE @dateTime NVARCHAR(MAX), @description NVARCHAR(MAX)
 
@@ -35,10 +35,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
   
   SET @xml = NULL
   SET @SQL = 'SELECT @xml = CAST(x.data as XML) FROM OPENROWSET(BULK '+QUOTENAME(@full_fname, CHAR(39))+' , SINGLE_BLOB) AS x(data)'
-  
-  PRINT @SQL
   EXEC sp_executesql @SQL, N'@xml xml out', @xml = @xml out
-  -- PRINT CONVERT(NVARCHAR(MAX), @Xml)
  
   IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 
  
@@ -50,7 +47,6 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
   BEGIN TRY
 	-- Сообщение
-	-- Заменить на EXEC dbo.spXmlBulkLoad 'Z:\Path\Data.xml', 'Z:\Path\Schema.xsd'
     SELECT 
 	  n.value('../messageId[1]', 'NVARCHAR(MAX)') AS 'messageId',
       n.value('dateTime[1]', 'NVARCHAR(MAX)') AS 'dateTime',
@@ -58,31 +54,27 @@ WHILE @@FETCH_STATUS = 0 BEGIN
     INTO #Messages
     FROM @xml.nodes('/statusReport/reportItem/statusItem') t(n)
 	
-	IF @TRANCOUNT = 0 
-	  COMMIT TRAN
-
-    SELECT TOP 1 @messageId = messageId, @Text = dateTime + ' ' + description, @dateTime = dateTime, @description = description FROM #Messages
-    SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
-	SELECT * FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
-
-	--INSERT INTO Notes (note_ID, note_nttp_ID, note_Item_ID, note_obj_ID, note_tpsyso_ID, note_Date, note_Value)
-    --VALUES (NEWID(), '7A89CB1E-8976-0144-9A26-15D6246CB826',@doc_ID, @doc_ID, 'FB5D0433-AEB2-D143-B93C-CC91779430B1', GETDATE(), @Text)
-	IF @doc_ID IS NOT NULL
+    
+	-- На какое сообщение пришел ответ
+    SELECT TOP 1 @messageId = messageId, @dateTime = dateTime, @description = description FROM #Messages
+    -- Внутренний ID документа в Тиллипад
+	SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
+	
+	IF @doc_ID IS NOT NULL 
 	    EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @description, @dateTime
 
-	UPDATE KonturEDI.dbo.edi_Messages 
-	SET IsProcessed = 1
-	WHERE messageId = @messageId
-
-	INSERT INTO KonturEDI.dbo.edi_MessagesLog (messageId, textLog)
-	VALUES (@messageId, @xml)
+	-- UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
+	-- Лог
+	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	VALUES (@xml, 'Получено статусное сообщение', @messageId, @doc_ID)
 
 	-- ACK
     SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
 	--PRINT @CMD
     EXEC @R = master..xp_cmdshell @cmd --, NO_OUTPUT
 	
-	
+	IF @TRANCOUNT = 0 
+  	  COMMIT TRAN
   END TRY
   BEGIN CATCH
     -- Ошибка загрузки файла, пишем ошибку приема

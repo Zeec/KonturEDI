@@ -7,6 +7,21 @@ where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
 EXEC tpsrv_logon 'sv', '1'
 EXEC external_EDIKontur
 
+select * from  KonturEDI.dbo.edi_MessagesLog where doc_ID = '86920DB0-8B1F-0642-82C8-96ED99A62865' order by log_Date
+select * from  KonturEDI.dbo.edi_MessagesLog  order by log_Date
+
+select * from  KonturEDI.dbo.edi_Messages order by doc_Date
+--select * from InputDocuments order by idoc_Date where idoc_ID = 'DBD04B8E-76DE-4AAF-9BA1-56F291C13F6A'
+select * from InputDocumentItems where idit_idoc_ID = 'DBD04B8E-76DE-4AAF-9BA1-56F291C13F6A'
+--EXEC external_CreateInputFromRequest '86920DB0-8B1F-0642-82C8-96ED99A62865', 400
+/*
+
+delete from KonturEDI.dbo.edi_MessagesLog where doc_ID = '86920DB0-8B1F-0642-82C8-96ED99A62865'
+delete from KonturEDI.dbo.edi_Messages where doc_ID = '86920DB0-8B1F-0642-82C8-96ED99A62865'
+
+*/
+
+--select CONVERT(NVARCHAR(MAX), ISNULL(GETDATE(), GETDATE()), 126),  CONVERT(NVARCHAR(MAX), ISNULL(GETDATE(), GETDATE()), 127)
 --select newid()
 /*
 select * from tp_Notetypes

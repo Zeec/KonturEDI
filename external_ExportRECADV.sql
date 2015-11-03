@@ -10,6 +10,7 @@ GO
 
 CREATE PROCEDURE dbo.external_ExportRECADV (
   @messageId UNIQUEIDENTIFIER,
+  @doc_ID UNIQUEIDENTIFIER,
   @Path NVARCHAR(255))
 WITH EXECUTE AS OWNER
 AS
@@ -86,8 +87,16 @@ DECLARE
      @nttp_ID_idoc_name UNIQUEIDENTIFIER = 'EA463965-C7AE-144F-AACD-2DCF0D3A9695'
     ,@nttp_ID_idoc_date UNIQUEIDENTIFIER = 'C8AC8FD2-77AF-3F48-B476-0255C9562FA7'
 
--- Формирование файла-заказа ORDER
---BEGIN TRY
+-- Формирование уведомления о приемке
+DECLARE @TRANCOUNT INT
+
+  SET @TRANCOUNT = @@TRANCOUNT
+  IF @TRANCOUNT = 0
+	BEGIN TRAN external_ImportDESADV
+  ELSE
+	SAVE TRAN external_ImportDESADV
+
+BEGIN TRY
 
 -- Элементы заказа
 SET @LineItem = (
@@ -120,8 +129,6 @@ LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
 WHERE M.messageId = @messageId  
 FOR XML PATH(N'lineItem'), TYPE)
 
-select @LineItem
-
 SET @LineItems = (
 SELECT
      'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
@@ -135,7 +142,6 @@ JOIN tp_StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
 WHERE M.messageId = @messageId
 FOR XML PATH(N'lineItems'), TYPE)
 
-select @LineItems
 -- seller
 DECLARE 
      @part_ID_Out UNIQUEIDENTIFIER
@@ -165,14 +171,14 @@ LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
 WHERE M.messageId = @messageId
 
 EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
-EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
+EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, 0, @buyer OUTPUT
 --EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
 EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @idoc_Date, @deliveryInfo OUTPUT
 
 DECLARE @senderGLN NVARCHAR(MAX), @buyerGLN NVARCHAR(MAX)
 SET @senderGLN = @seller.value('(/seller/gln)[1]', 'NVARCHAR(MAX)')
 SET @buyerGLN = @buyer.value('(/buyer/gln)[1]', 'NVARCHAR(MAX)')
-select @senderGLN, @buyerGLN
+
 
 DECLARE @Result NVARCHAR(MAX)
 SET @Result=
@@ -194,15 +200,15 @@ SET @Result=
 			    SELECT 
 				   --номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
 				    I.idoc_Name N'@number'
-				   ,CONVERT(NVARCHAR(MAX), I.idoc_Date, 127) N'@date'
+				   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, I.idoc_Date), 127) N'@date'
 
 				   -- номер заказа, дата заказа
 				   ,R.strqt_Name N'originOrder/@number'
-				   ,CONVERT(NVARCHAR(MAX), R.strqt_Date, 127) N'originOrder/@date'
+				   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, R.strqt_Date), 127) N'originOrder/@date'
 
 				   -- Договор
 				   ,C.pcntr_Name N'contractIdentificator/@number'
-				   ,CONVERT(NVARCHAR(MAX), C.pcntr_DateBegin, 127) N'contractIdentificator/@date'
+				   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, C.pcntr_DateBegin), 127) N'contractIdentificator/@date'
 				   
 				   --номер накладной, дата накладной
 				   ,NN.note_Value N'despatchIdentificator/@number'
@@ -228,29 +234,20 @@ SET @Result=
 		FOR XML RAW(N'eDIMessage')
 	)
 	
-	SELECT @Result
+
 	
 	DECLARE @File SYSNAME, @R NVARCHAR(MAX)
 
 	SET @R = N'<?xml version ="1.0" encoding ="utf-8"?>'+@Result
 	SET @File = 'C:\kontur\Outbox\RECADV_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
-	SELECT @File
-DECLARE @TRANCOUNT INT
-
-  SET @TRANCOUNT = @@TRANCOUNT
-  IF @TRANCOUNT = 0
-	BEGIN TRAN external_ImportDESADV
-  ELSE
-	SAVE TRAN external_ImportDESADV
-
-  BEGIN TRY
-
 	EXEC dbo.external_SaveToFile @File, @R
 
 	-- Статус отправлен
 	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
-	SELECT CAST(@Result AS XML)
-	
+	-- Лог
+	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	VALUES (@Result, 'Отправлено подтверждение прихода', @messageId, @doc_ID)
+
 	
  	IF @TRANCOUNT = 0 
 	  COMMIT TRAN

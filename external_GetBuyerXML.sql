@@ -9,9 +9,10 @@ IF OBJECT_ID(N'external_GetBuyerXML', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_GetBuyerXML  (
-    @part_ID UNIQUEIDENTIFIER,
-	@addr_ID UNIQUEIDENTIFIER,
-	@BuyerXML XML OUTPUT)
+     @part_ID UNIQUEIDENTIFIER
+	,@addr_ID UNIQUEIDENTIFIER
+	,@ShowAll INT 
+	,@BuyerXML XML OUTPUT)
 AS
 /*
     <!-- начало блока с данными о покупателе -->
@@ -64,8 +65,7 @@ JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
 --JOIN tp_StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
 WHERE M.messageId = @messageId*/
 
-
-
+IF @ShowAll = 1 
 SET @BuyerXML = 
 (
 	SELECT 
@@ -76,7 +76,7 @@ SET @BuyerXML =
 		,dbo.f_MultiLanguageStringToStringByLanguage1(firm_KPP, 25) N'organization/kpp' --КПП поставщика только для ЮЛ
 		--российский адрес
 		,(SELECT
-            dbo.f_MultiLanguageStringToStringByLanguage1(addr_RegionCode, 25) N'regionISOCode'
+             dbo.f_MultiLanguageStringToStringByLanguage1(addr_RegionCode, 25) N'regionISOCode'
     	    ,dbo.f_MultiLanguageStringToStringByLanguage1(addr_Area, 25) N'district'
 			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_City, 25) N'city'
 			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_Village, 25) N'settlement'
@@ -84,8 +84,8 @@ SET @BuyerXML =
 			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_House, 25) N'house'
 			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_Apartment, 25) N'flat'
 			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_PostCode, 25) N'postalCode'
-		FROM tp_Addresses
-		WHERE addr_ID = @addr_ID
+		FROM Addresses
+		WHERE addr_ID = @addr_ID 
 		FOR XML PATH(N'russianAddress'), TYPE) AS [*]
 		-- Контактная информация
         ,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_PhoneWork, ''), 25) N'contactlInfo/CEO/orderContact'--телефон контактного лица
@@ -93,12 +93,21 @@ SET @BuyerXML =
         ,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(PD.pepl_EMail, ''), 25) N'contactlInfo/CEO/email'--email контактного лица
        
 		
-	FROM tp_Partners       P
-	LEFT JOIN tp_Firms     F ON F.firm_ID = P.part_firm_ID
+	FROM Partners       P
+	LEFT JOIN Firms     F ON F.firm_ID = P.part_firm_ID 
 	--LEFT JOIN tp_Addresses A ON A.addr_obj_ID = F.firm_ID AND addr_Type = 2 -- CASE WHEN T2.part_firm_ID IS NULL THEN 3 ELSE 2 END AdddrType  -- рабочий (ФЛ) или юридический (ЮЛ) адрес
-	LEFT JOIN tp_People PD ON PD.pepl_ID = F.firm_pepl_ID_Director
-	LEFT JOIN tp_Notes      N ON N.note_obj_ID = P.part_ID AND note_nttp_ID = '74D6E928-475B-4F4C-8BC7-C216DEF422D6'
+	LEFT JOIN People   PD ON PD.pepl_ID = F.firm_pepl_ID_Director 
+	LEFT JOIN Notes     N ON N.note_obj_ID = P.part_ID AND note_nttp_ID = '74D6E928-475B-4F4C-8BC7-C216DEF422D6'
     WHERE part_ID = @part_ID
 	FOR XML PATH(N'buyer'), TYPE
 )
-
+ELSE
+SET @BuyerXML = 
+(
+	SELECT 
+	 	 CONVERT(NVARCHAR(MAX), note_Value) N'gln' --gln поставщика
+	FROM Partners       P
+	LEFT JOIN Notes     N ON N.note_obj_ID = P.part_ID AND note_nttp_ID = '74D6E928-475B-4F4C-8BC7-C216DEF422D6'
+    WHERE part_ID = @part_ID
+	FOR XML PATH(N'buyer'), TYPE
+)
