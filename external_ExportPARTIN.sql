@@ -4,82 +4,15 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-IF OBJECT_ID('external_ExportRECADV', 'P') IS NOT NULL 
-  DROP PROCEDURE dbo.external_ExportRECADV
+IF OBJECT_ID('external_ExportPARTIN', 'P') IS NOT NULL 
+  DROP PROCEDURE dbo.external_ExportPARTIN
 GO
 
-CREATE PROCEDURE dbo.external_ExportRECADV (
+CREATE PROCEDURE dbo.external_ExportPARTIN (
   @messageId UNIQUEIDENTIFIER,
   @Path NVARCHAR(255))
 WITH EXECUTE AS OWNER
 AS
-/*
-<eDIMessage id="messageId" creationDateTime="creationDateTime">  <!--идентификатор сообщения, время сообщения-->
-  <!-- начало заголовка сообщения -->
-  <interchangeHeader>
-    <sender>SenderGLN</sender>    <!--GLN отправителя сообщения-->
-    <recipient>RecipientGLN</recipient>   <!--GLN получателя сообщения-->
-    <documentType>RECADV</documentType>  <!--тип документа-->
-    <creationDateTime>creationDateTimeT00:00:00.000Z</creationDateTime> <!--дата и время создания сообщения-->
-    <creationDateTimeBySender>creationDateTimeBySenderT00:00:00.000Z</creationDateTimeBySender> <!--дата и время создания сообщения клиентом-->
-    <isTest>1</isTest>    <!--тестовый флаг-->
-  </interchangeHeader>
-  <!-- конец заголовка сообщения -->
-  <receivingAdvice number="recadvNumber" date="recadvDate">  <!--номер приёмки, дата уведомления о приёмке-->
-    <originOrder number="ordersNumber" date="ordersDate" />      <!--номер заказа, дата заказа-->
-    <contractIdentificator number="contractNumber" date="contractDate" />
-    <!--номер договора/ контракта, дата договора/ контракта-->
-    <despatchIdentificator number="DespatchAdviceNumber" date="DespatchDate0000" />
-    <!--номер накладной, дата накладной-->
-    <blanketOrderIdentificator number="BlanketOrdersNumber" />     <!--номер серии заказов-->
-    <!-- начало блока данных о поставщике -->
-    <seller/>
-    <buyer/>
-    <invoicee/>
-    <deliveryInfo/>
-    <!-- конец блока данных о грузоотправителе и грузополучателе -->
-    <!-- начало блока с данными о товаре -->
-    <lineItems>
-      <lineItem>
-        <gtin>GTIN</gtin>       <!--GTIN товара-->
-        <internalBuyerCode>BuyerProductId</internalBuyerCode>     <!--внутренний код присвоенный покупателем-->
-        <internalSupplierCode>SupplierProductId</internalSupplierCode>
-        <!--артикул товара (код товара присвоенный продавцом)-->
-        <orderLineNumber>orderLineNumber</orderLineNumber>     <!--номер позиции в заказе-->
-        <typeOfUnit>RС</typeOfUnit>   <!--признак возвратной тары, если это не тара, то строки нет-->
-        <description>Name</description>         <!--наименование товара-->
-        <comment>LineItemComment</comment>          <!--комментарий к товарной позиции-->
-        <orderedQuantity unitOfMeasure="MeasurementUnitCode">OrderedQuantity</orderedQuantity>
-        <!--заказанное количество-->
-        <despatchedQuantity unitOfMeasure="MeasurementUnitCode">DespatchQuantity</despatchedQuantity>
-        <!--отгруженное поставщиком количество-->
-        <deliveredQuantity unitOfMeasure="MeasurementUnitCode">DesadvQuantity</deliveredQuantity>
-        <!--поставленное покупателю количество-->
-        <acceptedQuantity unitOfMeasure="MeasurementUnitCode">RecadvQuantity</acceptedQuantity>
-        <!--принятое количество-->
-        <onePlaceQuantity unitOfMeasure="MeasurementUnitCode">OnePlaceQuantity</onePlaceQuantity>
-        <!-- количество в одном месте (чему д.б. кратно общее кол-во) -->
-        <netPrice>Price</netPrice>     <!--цена единицы товара без НДС-->
-        <netPriceWithVAT>PriceWithVAT</netPriceWithVAT>     <!--цена единицы товара с НДС-->
-        <netAmount>PriceSummary</netAmount>      <!--сумма по позиции без НДС-->
-        <exciseDuty>exciseSum</exciseDuty>       <!--акциз товара-->
-        <vATRate>VATRate</vATRate>  <!--ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)-->
-        <vATAmount>vatSum</vATAmount>  <!--сумма НДС-->
-        <amount>PriceSummaryWithVAT</amount>       <!--сумма по позиции с НДС-->
-        <countryOfOriginISOCode>CountriesOfOriginCode</countryOfOriginISOCode>     <!--код страны производства-->
-        <customsDeclarationNumber>CustomDeclarationNumbers</customsDeclarationNumber>
-        <!--номер таможенной декларации-->
-      </lineItem>
-      <!-- каждая последующая товарная позиция должна идти в отдельном теге <lineItem> -->
-
-      <totalSumExcludingTaxes>RecadvTotal</totalSumExcludingTaxes>      <!--сумма без НДС-->
-      <totalAmount>RecadvTotalWithVAT</totalAmount>
-      <!--общая сумма по товарам, на которую начисляется НДС (125/86)-->
-      <totalVATAmount>RecadvTotalVAT</totalVATAmount>    <!--сумма НДС, значение берем из orders/ordrsp-->
-    </lineItems>
-  </receivingAdvice>
-</eDIMessage>
-*/
 
 DECLARE @LineItem XML, @LineItems XML
 DECLARE
@@ -232,7 +165,7 @@ SET @Result=
 	
 	DECLARE @File SYSNAME, @R NVARCHAR(MAX)
 
-	SET @R = N'<?xml version ="1.0" encoding ="utf-8"?>'+@Result
+	SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
 	SET @File = 'C:\kontur\Outbox\RECADV_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
 	SELECT @File
 DECLARE @TRANCOUNT INT

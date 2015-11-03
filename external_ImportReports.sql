@@ -12,13 +12,15 @@ CREATE PROCEDURE dbo.external_ImportReports (
   @ReportsPath NVARCHAR(255))
 WITH EXECUTE AS OWNER
 AS
-DECLARE @doc_ID UNIQUEIDENTIFIER, @messageId UNIQUEIDENTIFIER
+DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
 
 DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @Text NVARCHAR(255), @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
 DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
 DECLARE @usr_ID_Msg UNIQUEIDENTIFIER
 DECLARE @TRANCOUNT INT
 DECLARE @dateTime NVARCHAR(MAX), @description NVARCHAR(MAX)
+
+
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @ReportsPath, 1, 1
 
@@ -60,11 +62,13 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  COMMIT TRAN
 
     SELECT TOP 1 @messageId = messageId, @Text = dateTime + ' ' + description, @dateTime = dateTime, @description = description FROM #Messages
-    SELECT @doc_ID = doc_ID FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
+    SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
+	SELECT * FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
 
 	--INSERT INTO Notes (note_ID, note_nttp_ID, note_Item_ID, note_obj_ID, note_tpsyso_ID, note_Date, note_Value)
     --VALUES (NEWID(), '7A89CB1E-8976-0144-9A26-15D6246CB826',@doc_ID, @doc_ID, 'FB5D0433-AEB2-D143-B93C-CC91779430B1', GETDATE(), @Text)
-	EXEC external_UpdateDocStatus @doc_ID, @description, @dateTime
+	IF @doc_ID IS NOT NULL
+	    EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @description, @dateTime
 
 	UPDATE KonturEDI.dbo.edi_Messages 
 	SET IsProcessed = 1
@@ -90,9 +94,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	IF @TRANCOUNT > @@TRANCOUNT
 	  BEGIN TRAN
 
-	-- NACK
-    --SET @cmd = 'RENAME "'+ @full_fname + '" "Error - '+@fname + '"'
-	--EXEC @R = master..xp_cmdshell @cmd --, NO_OUTPUT
+	EXEC tpsys_ReraiseError
   END CATCH
   
   IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 

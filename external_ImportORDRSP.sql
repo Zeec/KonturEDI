@@ -13,13 +13,14 @@ CREATE PROCEDURE dbo.external_ImportORDRSP (
 WITH EXECUTE AS OWNER
 AS
 -- Прием сообщений
-DECLARE @doc_ID UNIQUEIDENTIFIER, @messageId UNIQUEIDENTIFIER
+DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(MAX), @messageId UNIQUEIDENTIFIER
 
 DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @Text NVARCHAR(255), @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @R INT
 DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
 DECLARE @TRANCOUNT INT
 
 DECLARE @Result_XML XML, @Result_Text NVARCHAR(MAX), @FileName SYSNAME
+DECLARE @msg_status NVARCHAR(MAX)
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @Path, 1, 1
@@ -52,9 +53,10 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  n.value('@id', 'NVARCHAR(MAX)') AS 'messageId',
 	  n.value('interchangeHeader[1]/sender[1]', 'NVARCHAR(MAX)') AS 'senderGLN',
 	  n.value('interchangeHeader[1]/recipient[1]', 'NVARCHAR(MAX)') AS 'recipientGLN', 
-	  n.value('orderResponse[1]/@number', 'NVARCHAR(MAX)') AS 'orderResponse_number',
-	  n.value('orderResponse[1]/@date', 'NVARCHAR(MAX)') AS 'orderResponse_date',
-	  n.value('orderResponse[1]/@status', 'NVARCHAR(MAX)') AS 'orderResponse_status',
+	  n.value('interchangeHeader[1]/documentType[1]', 'NVARCHAR(MAX)') AS 'documentType', 
+	  n.value('orderResponse[1]/@number', 'NVARCHAR(MAX)') AS 'msg_number',
+	  n.value('orderResponse[1]/@date', 'NVARCHAR(MAX)') AS 'msg_date',
+	  n.value('orderResponse[1]/@status', 'NVARCHAR(MAX)') AS 'msg_status',
       n.value('orderResponse[1]/originOrder[1]/@number', 'NVARCHAR(MAX)') AS 'originOrder_number',
       n.value('orderResponse[1]/originOrder[1]/@date', 'NVARCHAR(MAX)') AS 'originOrder_date'
     INTO #Messages
@@ -62,143 +64,40 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 	-- Надо бы проверку на свои GLN
 
-	DECLARE @orderResponse_status NVARCHAR(MAX)
-	SELECT @orderResponse_status = orderResponse_status FROM #Messages
+	
+	SELECT @msg_status = msg_status FROM #Messages
 
-/*
-<?xml version="1.0" encoding="utf-8"?>
-<statusReport>
-  <reportDateTime>2015-08-27T14:30:59.648Z</reportDateTime>
-  <reportRecipient>2000000009780</reportRecipient>
-  <reportItem>
-    <messageId>abd85d38-e3d3-49fc-8815-9e0b76fbf8dc</messageId>
-    <documentId>abd85d38-e3d3-49fc-8815-9e0b76fbf8dc</documentId>
-    <messageSender>2000000009780</messageSender>
-    <messageRecepient>2000000009759</messageRecepient>
-    <documentType>ORDRSP</documentType>
-    <documentNumber>QMHN3T9FE1A0VLPO7</documentNumber>
-    <documentDate>2015-08-27</documentDate>
-    <statusItem>
-      <dateTime>2015-08-27T17:44:44.648Z</dateTime>
-      <stage>Checking</stage>
-      <state>Fail</state>
-      <error>Не обрабатывается УС</error>
-      <description>Не обрабатывается УС</description>
-    </statusItem>
-  </reportItem>
-</statusReport>
-*/
+ 	SELECT @doc_ID = doc_ID, @doc_Type = doc_Type
+	FROM #Messages
+	JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
 
     -- Accepted/Rejected/Changed
-	IF @orderResponse_status = 'Changed' BEGIN
-	  SET @Result_XML = (
-	    SELECT 
-		   GETDATE() N'reportDateTime'
-		  ,senderGLN N'reportRecipient'
-		  ,messageId N'reportItem/messageId'
-		  ,messageId N'reportItem/documentId'
-		  ,senderGLN N'reportItem/messageSender'
-		  ,recipientGLN N'reportItem/messageRecepient'
-		  ,'ORDRSP' N'reportItem/documentType'
-		  ,orderResponse_number N'reportItem/documentNumber'
-		  ,orderResponse_date N'reportItem/documentDate'
-		  ,GETDATE() N'reportItem/statusItem/dateTime'
-		  ,'Checking' N'reportItem/statusItem/stage'
-		  ,'Fail' N'reportItem/statusItem/state'
-		  ,'При обработке сообщения произошла ошибка' N'reportItem/statusItem/description'
-		  ,'Изменение заказов не поддерживается учетной системой' N'reportItem/statusItem/error'
-        FROM #Messages
-		FOR XML PATH(N'statusReport'), TYPE
-	  )
-  	  
-	  SET @FileName = 'C:\kontur\outbox\Fail_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@fname AS NVARCHAR(MAX))+'.xml'
+	IF @msg_status = 'Changed' BEGIN
+	    -- Изменение заказов не поддерживается учетной системой
+        EXEC external_ExportStatusReport 'C:\Kontur\Outbox\', @fname, 'Fail', 'При обработке сообщения произошла ошибка', 'Изменение заказов не поддерживается учетной системой'
 	END
-	ELSE IF @orderResponse_status = 'Rejected' BEGIN
-  	  -- Поставить статус "заказ отменен"
-	  SELECT @doc_ID = doc_ID
-	  FROM #Messages
-	  JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
-	  -- 
-	  UPDATE tp_StoreRequests SET strqt_strqtst_ID = 10 WHERE strqt_ID = @doc_ID
-      EXEC external_UpdateDocStatus @doc_ID, 'Отвергнута'
+	ELSE IF @msg_status = 'Rejected' BEGIN
+ 	  -- Поставить статус "заказ отменен"
+	  UPDATE StoreRequests SET strqt_strqtst_ID = 10 WHERE strqt_ID = @doc_ID
+      
+	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Отвергнута'
 
-      SET @Result_XML = (
-	    SELECT 
-		   GETDATE() N'reportDateTime'
-		  ,senderGLN N'reportRecipient'
-		  ,messageId N'reportItem/messageId'
-		  ,messageId N'reportItem/documentId'
-		  ,senderGLN N'reportItem/messageSender'
-		  ,recipientGLN N'reportItem/messageRecepient'
-		  ,'ORDRSP' N'reportItem/documentType'
-		  ,orderResponse_number N'reportItem/documentNumber'
-		  ,orderResponse_date N'reportItem/documentDate'
-		  ,GETDATE() N'reportItem/statusItem/dateTime'
-		  ,'Checking' N'reportItem/statusItem/stage'
-		  ,'Ok' N'reportItem/statusItem/state'
-		  ,'Сообщение доставлено' N'reportItem/statusItem/description'
-        FROM #Messages
-		FOR XML PATH(N'statusReport'), TYPE
-	  )
-  	  
-	  SET @FileName = 'C:\kontur\outbox\Ok_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@fname AS NVARCHAR(MAX))+'.xml'
+      EXEC external_ExportStatusReport 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
-	ELSE IF @orderResponse_status = 'Accepted' BEGIN
+	ELSE IF @msg_status = 'Accepted' BEGIN
 	  -- Меняем статус на "Подтверждена"
-	  SELECT @doc_ID = doc_ID
-	  FROM #Messages
-	  JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
-	  -- 
 	  UPDATE tp_StoreRequests SET strqt_strqtst_ID = 11 WHERE strqt_ID = @doc_ID
-	  EXEC external_UpdateDocStatus @doc_ID, 'Принята'
-      -- Приходная накладная
-	  -- EXEC external_CreateInputFromRequest @doc_ID 
 
-	  SET @Result_XML = (
-	    SELECT 
-		   GETDATE() N'reportDateTime'
-		  ,senderGLN N'reportRecipient'
-		  ,messageId N'reportItem/messageId'
-		  ,messageId N'reportItem/documentId'
-		  ,senderGLN N'reportItem/messageSender'
-		  ,recipientGLN N'reportItem/messageRecepient'
-		  ,'ORDRSP' N'reportItem/documentType'
-		  ,orderResponse_number N'reportItem/documentNumber'
-		  ,orderResponse_date N'reportItem/documentDate'
-		  ,GETDATE() N'reportItem/statusItem/dateTime'
-		  ,'Checking' N'reportItem/statusItem/stage'
-		  ,'Ok' N'reportItem/statusItem/state'
-		  ,'Сообщение доставлено' N'reportItem/statusItem/description'
-        FROM #Messages
-		FOR XML PATH(N'statusReport'), TYPE
-	  )
-	  SET @FileName = 'C:\kontur\outbox\Ok_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@fname AS NVARCHAR(MAX))+'.xml'
+	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Принята'
+
+      EXEC external_ExportStatusReport 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
-
-    /*SELECT TOP 1 @messageId = messageId, @Text = dateTime + ' ' + description FROM #Messages
-    SELECT @doc_ID = doc_ID FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
-
-	INSERT INTO Notes (note_ID, note_nttp_ID, note_Item_ID, note_obj_ID, note_tpsyso_ID, note_Date, note_Value)
-    VALUES (NEWID(), '7A89CB1E-8976-0144-9A26-15D6246CB826',@doc_ID, @doc_ID, 'FB5D0433-AEB2-D143-B93C-CC91779430B1', GETDATE(), @Text)
-
-	UPDATE KonturEDI.dbo.edi_Messages 
-	SET IsProcessed = 1
-	WHERE messageId = @messageId
-
-	INSERT INTO KonturEDI.dbo.edi_MessagesLog (messageId, textLog)
-	VALUES (@messageId, @xml)
-
-*/
-	
-	-- SELECT @Result_XML
-	SET @Result_Text = N'<?xml  version ="1.0"  encoding ="utf-8"?>' + CONVERT(NVARCHAR(MAX), @Result_XML)
-    EXEC dbo.external_SaveToFile @FileName, @Result_Text
 
     SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
     EXEC @R = master..xp_cmdshell @cmd 
 
  	IF @TRANCOUNT = 0 
-	  COMMIT TRAN
+  	  COMMIT TRAN
   END TRY
   BEGIN CATCH
     -- Ошибка загрузки файла, пишем ошибку приема

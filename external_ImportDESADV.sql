@@ -13,7 +13,7 @@ CREATE PROCEDURE dbo.external_ImportDESADV (
 WITH EXECUTE AS OWNER
 AS
 -- DESADV (УВЕДОМЛЕНИЕ ОБ ОТГРУЗКЕ)
-DECLARE @doc_ID UNIQUEIDENTIFIER, @messageId UNIQUEIDENTIFIER
+DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
 
 DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @Text NVARCHAR(255), @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @R INT
 DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
@@ -53,9 +53,10 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  n.value('@id', 'NVARCHAR(MAX)') AS 'messageId',
 	  n.value('interchangeHeader[1]/sender[1]', 'NVARCHAR(MAX)') AS 'senderGLN',
 	  n.value('interchangeHeader[1]/recipient[1]', 'NVARCHAR(MAX)') AS 'recipientGLN', 
-	  n.value('despatchAdvice[1]/@number', 'NVARCHAR(MAX)') AS 'despatchAdvice_number',
-	  n.value('despatchAdvice[1]/@date', 'DATETIME') AS 'despatchAdvice_date',
-	  n.value('despatchAdvice[1]/@status', 'NVARCHAR(MAX)') AS 'orderResponse_status',
+	  n.value('interchangeHeader[1]/documentType[1]', 'NVARCHAR(MAX)') AS 'documentType', 
+	  n.value('despatchAdvice[1]/@number', 'NVARCHAR(MAX)') AS 'msgdoc_number',
+	  n.value('despatchAdvice[1]/@date', 'DATETIME') AS 'msgdoc_date',
+	  n.value('despatchAdvice[1]/@status', 'NVARCHAR(MAX)') AS 'msgdoc_status',
       n.value('despatchAdvice[1]/originOrder[1]/@number', 'NVARCHAR(MAX)') AS 'originOrder_number',
       n.value('despatchAdvice[1]/originOrder[1]/@date', 'NVARCHAR(MAX)') AS 'originOrder_date'
     INTO #Messages
@@ -66,19 +67,25 @@ WHILE @@FETCH_STATUS = 0 BEGIN
     -- Accepted/Rejected/Changed
 	BEGIN
 	  
-	  SELECT @despatchAdvice_number = despatchAdvice_number, @despatchAdvice_date = despatchAdvice_date FROM #Messages
+	  SELECT @despatchAdvice_number = doc_number, @despatchAdvice_date = doc_date FROM #Messages
 	  
 	  -- Меняем статус на "Подтверждена"
-	  SELECT @doc_ID = doc_ID
-	  FROM #Messages
-	  JOIN KonturEDI.dbo.edi_Messages ON doc_Name = originOrder_number AND CONVERT(DATE, doc_Date) = CONVERT(DATE, originOrder_date)
+	  SELECT @doc_ID = doc_ID, @doc_Type = doc_Type
+	  FROM #Messages T
+	  JOIN KonturEDI.dbo.edi_Messages M ON M.doc_Name = originOrder_number AND CONVERT(DATE, M.doc_Date) = CONVERT(DATE, originOrder_date)
+	  WHERE M.doc_Type = 'request'
+
+	  SELECT *
+	  FROM #Messages T
+	  JOIN KonturEDI.dbo.edi_Messages M ON M.doc_Name = originOrder_number AND CONVERT(DATE, M.doc_Date) = CONVERT(DATE, originOrder_date)
+	  WHERE M.doc_Type = 'request'
 
 	  -- Приходная накладная
 	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date 
       -- Статус
-	  EXEC external_UpdateDocStatus @doc_ID, 'Создана приходная накладная'
+	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Создана приходная накладная'
 	  
-	  SET @Result_XML = (
+	  /*SET @Result_XML = (
 	    SELECT 
 		   GETDATE() N'reportDateTime'
 		  ,senderGLN N'reportRecipient'
@@ -97,7 +104,9 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		FOR XML PATH(N'statusReport'), TYPE
 	  )
   	  
-	  SET @FileName = 'C:\kontur\outbox\Ok_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@fname AS NVARCHAR(MAX))+'.xml'
+	  SET @FileName = 'C:\kontur\outbox\Ok_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')+'_'+CAST(@fname AS NVARCHAR(MAX))+'.xml'*/
+
+	  EXEC external_ExportStatusReport 'C:\kontur\outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
 
     /*SELECT TOP 1 @messageId = messageId, @Text = dateTime + ' ' + description FROM #Messages
@@ -115,9 +124,9 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 */
 	
-	SELECT @Result_XML
-	SET @Result_Text = N'<?xml  version ="1.0"  encoding ="utf-8"?>' + CONVERT(NVARCHAR(MAX), @Result_XML)
-    EXEC dbo.external_SaveToFile @FileName, @Result_Text
+	--SELECT @Result_XML
+	--SET @Result_Text = N'<?xml  version ="1.0"  encoding ="utf-8"?>' + CONVERT(NVARCHAR(MAX), @Result_XML)
+    --EXEC dbo.external_SaveToFile @FileName, @Result_Text
 
     SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
     EXEC @R = master..xp_cmdshell @cmd 

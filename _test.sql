@@ -4,8 +4,8 @@
 SET IsProcessed = 0
 where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
 
---EXEC tpsrv_logon 'sv', '1'
---EXEC external_EDIKontur
+EXEC tpsrv_logon 'sv', '1'
+EXEC external_EDIKontur
 
 --select newid()
 /*
@@ -62,4 +62,22 @@ tpsrv_stop
 go
 tpsrv_start
 go
+*/
+
+/*SELECT	'name'		AS [param/@type]
+,	 name		AS [param/text()]
+,	NULL		AS [*]
+,	'number'	AS [param/@type]
+,	 number		AS [param/text()]
+,	NULL		AS [*]
+,	'type'		AS [param/@type]
+,	[type]		AS [param/text()]
+FROM	master.dbo.spt_values
+WHERE	type = 'A'
+FOR XML Path('eDIMessage'),Type
+<params>
+  <param type="name">rpc</param>
+  <param type="number">1</param>
+  <param type="type">A  </param>
+</params>
 */

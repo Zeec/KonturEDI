@@ -4,37 +4,26 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-IF OBJECT_ID(N'external_CreateOrdersXML', 'P') IS NOT NULL 
-  DROP PROCEDURE dbo.external_CreateOrdersXML
+IF OBJECT_ID(N'external_ExportORDERS', 'P') IS NOT NULL 
+  DROP PROCEDURE dbo.external_ExportORDERS
 GO
 
-CREATE PROCEDURE dbo.external_CreateOrdersXML (
+CREATE PROCEDURE dbo.external_ExportORDERS (
     @messageId UNIQUEIDENTIFIER)
 AS
-
-/*SELECT	'name'		AS [param/@type]
-,	 name		AS [param/text()]
-,	NULL		AS [*]
-,	'number'	AS [param/@type]
-,	 number		AS [param/text()]
-,	NULL		AS [*]
-,	'type'		AS [param/@type]
-,	[type]		AS [param/text()]
-FROM	master.dbo.spt_values
-WHERE	type = 'A'
-FOR XML Path('eDIMessage'),Type
-<params>
-  <param type="name">rpc</param>
-  <param type="number">1</param>
-  <param type="type">A  </param>
-</params>
-*/
-
-
+DECLARE @TRANCOUNT INT
 DECLARE @LineItem XML, @LineItems XML
 
--- ‘ормирование файла-заказа ORDER
---BEGIN TRY
+
+  SET @TRANCOUNT = @@TRANCOUNT
+  IF @TRANCOUNT = 0
+	  BEGIN TRAN external_ExportORDERS
+  ELSE
+	  SAVE TRAN external_ExportORDERS
+
+-- ‘ормирование файлов-заказов ORDERS
+BEGIN TRY
+
 
 -- Ёлементы заказа
 SET @LineItem = (
@@ -189,8 +178,19 @@ SET @Result=
 	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
 	SELECT CAST(@Result AS XML)
 
+ 	IF @TRANCOUNT = 0 
+  	    COMMIT TRAN
+END TRY
+BEGIN CATCH
+    -- ќшибка загрузки файла, пишем ошибку приема
+	IF @@TRANCOUNT > 0
+	    IF (XACT_STATE()) = -1
+	        ROLLBACK
+	    ELSE
+	        ROLLBACK TRAN external_ExportORDERS
+	IF @TRANCOUNT > @@TRANCOUNT
+	    BEGIN TRAN
 
---END TRY
---BEGIN CATCH
---END CATCH
+	EXEC tpsys_ReraiseError
+END CATCH
 

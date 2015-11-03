@@ -28,7 +28,7 @@ DECLARE @messageId UNIQUEIDENTIFIER, @doc_ID UNIQUEIDENTIFIER
 SELECT TOP 1 @messageId = messageId, @doc_ID = doc_ID FROM KonturEDI.dbo.edi_Messages WHERE doc_Type = 'request' AND IsProcessed = 0
 
 IF @messageId IS NOT NULL BEGIN
-  EXEC external_CreateOrdersXML @messageId
+  EXEC external_ExportORDERS @messageId
   EXEC external_UpdateDocStatus @doc_ID, 'Отправлена' --, current_timestamp
 END
 
@@ -49,6 +49,7 @@ EXEC master..xp_cmdshell @cmd, no_output
 
 -- Обработка входящих данных
 EXEC external_ImportORDRSP 'C:\kontur\Inbox'
+return
 EXEC external_ImportDESADV 'C:\kontur\Inbox'
 
 -- Предача на фтп
