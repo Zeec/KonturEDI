@@ -13,53 +13,13 @@ CREATE PROCEDURE dbo.external_CreateInputFromRequest (
 	@name NVARCHAR(200),
 	@date DATETIME)
 AS
-/*
-DECLARE @PARAMETER_stor_ID_Value_0 UNIQUEIDENTIFIER
-DECLARE @PARAMETER_part_ID_Value_0 UNIQUEIDENTIFIER
-DECLARE @PARAMETER_usr_ID_Value_0 UNIQUEIDENTIFIER
-DECLARE @PARAMETER_Date_Value_0 DATETIME
-DECLARE @PARAMETER_DocID_0 UNIQUEIDENTIFIER
-
-SET @PARAMETER_stor_ID_Value_0 = '38A9C1B0-BA75-434F-ADCC-94A665B40770'
-SET @PARAMETER_part_ID_Value_0 = '46BA7DB7-0BC1-214E-B704-7ADE47283009'
-SET @PARAMETER_usr_ID_Value_0 = '942AF580-6AE9-4D89-9465-7A348FB604E9'
-SET @PARAMETER_Date_Value_0 = CONVERT(DATETIME,'2015-10-21 17:24:39.330',21)
-SET @PARAMETER_DocID_0 = '288C2F78-3328-A540-869E-C3C0947D9C8C'
-
-IF OBJECT_ID('tempdb..#NAMETABLE') IS NOT NULL DROP TABLE #NAMETABLE
-CREATE TABLE #NAMETABLE (Name NVARCHAR(100))
-
-IF OBJECT_ID('tempdb..#RESULT') IS NOT NULL DROP TABLE #RESULT
-CREATE TABLE #RESULT (ID UNIQUEIDENTIFIER, Name NVARCHAR(100))
-
-EXEC tpsrv_SetValueAsGUID 'stor_ID', 'q_GetDocumentNumber1', @PARAMETER_stor_ID_Value_0, 0
-EXEC tpsrv_SetValueAsGUID 'part_ID', 'q_GetDocumentNumber1', @PARAMETER_part_ID_Value_0, 0
-EXEC tpsrv_SetValueAsGUID 'usr_ID', 'q_GetDocumentNumber1', @PARAMETER_usr_ID_Value_0, 0
-EXEC tpsrv_SetValueAsDATETIME 'Date', 'q_GetDocumentNumber1', @PARAMETER_Date_Value_0, 0
-
-EXEC tpsrv_ExecuteQuery 'q_GetDocumentNumber1', %QueryID
-EXEC tpsrv_AssignStreams 'q_GetDocumentNumber1', 'q_GetDocumentNumber2' 
-
-INSERT #NAMETABLE EXEC tpsrv_SelectTableValue 'Main', 'q_GetDocumentNumber2'
-
-INSERT #RESULT (ID, Name)
-SELECT @PARAMETER_DocID_0, Name
-FROM #NAMETABLE
-
-DELETE #NAMETABLE
-
-SELECT ID, Name
-FROM #RESULT
-
-DROP TABLE #NAMETABLE
-DROP TABLE #RESULT
-*/
-
 
 DECLARE 
-  @idoc_ID UNIQUEIDENTIFIER,
-  @idoc_Name NVARCHAR(MAX),
-  @idoc_Date DATETIME
+     @idoc_ID UNIQUEIDENTIFIER
+    ,@idoc_Name NVARCHAR(MAX)
+    ,@idoc_Date DATETIME
+	,@idoc_stor_ID UNIQUEIDENTIFIER
+	,@idoc_usr_ID UNIQUEIDENTIFIER
 
 DECLARE
      @nttp_ID_idoc_name UNIQUEIDENTIFIER = 'EA463965-C7AE-144F-AACD-2DCF0D3A9695'
@@ -68,9 +28,23 @@ DECLARE
     ,@note_ID_idoc_date UNIQUEIDENTIFIER
     ,@tpsyso_ID UNIQUEIDENTIFIER
 
-SELECT @idoc_ID = NEWID(), @idoc_Name = strqt_Name, @idoc_Date = GETDATE()
+SELECT @idoc_ID = NEWID(),  @idoc_Date = GETDATE(), @idoc_stor_ID = strqt_stor_ID_In, @idoc_usr_ID = strqt_usr_ID
 FROM StoreRequests
 WHERE strqt_ID = @strqt_ID
+
+-- Номер документа
+DECLARE @Res INT, @D DATETIME
+SET @D = DATEADD(yy, DATEPART(yy, @idoc_Date) - 1900, 0)
+
+EXEC dnf_GetCounter 
+      @Name = 'TransparentDocumentCounter', 
+      @DataID1 = @idoc_stor_ID, 
+      @DataID2 = @idoc_usr_ID, 
+      @Date = @D, 
+      @Value = @Res OUT
+
+SELECT @idoc_Name = CONVERT(NVARCHAR(50), @Res) 
+--
 
 IF OBJECT_ID('tempdb..#StoreRequestItemInputDocumentItems') IS NOT NULL DROP TABLE #StoreRequestItemInputDocumentItems
 
@@ -79,6 +53,19 @@ CREATE TABLE #StoreRequestItemInputDocumentItems (
 	sriidi_strqti_ID UNIQUEIDENTIFIER,
 	sriidi_idit_ID UNIQUEIDENTIFIER,
 	sriidi_Volume NUMERIC(18, 6))
+
+DECLARE @TRANCOUNT INT
+
+
+
+  SET @TRANCOUNT = @@TRANCOUNT
+  IF @TRANCOUNT = 0
+	  BEGIN TRAN external_CreateInputFromRequest
+  ELSE
+	  SAVE TRAN external_CreateInputFromRequest
+
+-- Формирование файлов-заказов ORDERS
+BEGIN TRY
 
 INSERT INTO #StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
 SELECT NEWID(), strqti_ID, NEWID(), strqti_Volume
@@ -114,7 +101,7 @@ WHERE tpsyso_Name like '%Приходная накладная%'
 SELECT @note_ID_idoc_name = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_idoc_name AND note_obj_ID = @idoc_ID
 SELECT @note_ID_idoc_date = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_idoc_date AND note_obj_ID = @idoc_ID
 --
-/*IF @note_ID_idoc_name IS NULL
+IF @note_ID_idoc_name IS NULL
     INSERT INTO tp_Notes (note_ID, note_nttp_ID, note_obj_ID, note_item_ID, note_Value, note_tpsyso_ID)
     VALUES(NEWID(), @nttp_ID_idoc_name, @idoc_ID, @idoc_ID, @name, @tpsyso_ID)
 ELSE 
@@ -128,9 +115,25 @@ IF @note_ID_idoc_date IS NULL
 ELSE 
     UPDATE Notes
 	SET note_Value = @date 
-	WHERE note_ID = @note_ID_idoc_date*/
+	WHERE note_ID = @note_ID_idoc_date
 --
 
 -- Сообщение
 INSERT INTO KonturEDI.dbo.edi_Messages (doc_ID, doc_Name, doc_Date, doc_Type, doc_ID_original)
 SELECT @idoc_ID, @idoc_Name, @idoc_Date, 'input', @strqt_ID
+
+ 	IF @TRANCOUNT = 0 
+  	    COMMIT TRAN
+END TRY
+BEGIN CATCH
+    -- Ошибка загрузки файла, пишем ошибку приема
+	IF @@TRANCOUNT > 0
+	    IF (XACT_STATE()) = -1
+	        ROLLBACK
+	    ELSE
+	        ROLLBACK TRAN external_CreateInputFromRequest
+	IF @TRANCOUNT > @@TRANCOUNT
+	    BEGIN TRAN
+
+	EXEC tpsys_ReraiseError
+END CATCH
