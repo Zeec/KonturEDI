@@ -192,6 +192,9 @@ BEGIN CATCH
 	IF @TRANCOUNT > @@TRANCOUNT
 	    BEGIN TRAN
 
-	EXEC tpsys_ReraiseError
+	    -- Ошибки в таблицу, обработаем потом
+		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+	    SELECT 'ExportORDERS', ERROR_NUMBER(), ERROR_MESSAGE()
+	    -- EXEC tpsys_ReraiseError
 END CATCH
 
