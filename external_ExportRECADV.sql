@@ -82,6 +82,10 @@ AS
 </eDIMessage>
 */
 
+-- Единица измерения
+DECLARE @nttp_ID_Measure UNIQUEIDENTIFIER = '35D20336-935E-B042-B0F7-7D5FDF032AB2'
+DECLARE @Measure_Default NVARCHAR(10) = 'PCE'
+
 DECLARE @LineItem XML, @LineItems XML
 DECLARE
      @nttp_ID_idoc_name UNIQUEIDENTIFIER = 'EA463965-C7AE-144F-AACD-2DCF0D3A9695'
@@ -109,7 +113,7 @@ SELECT
 	,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.idit_ItemName, P.pitm_Name), 25) N'description' --название товара
 	,dbo.f_MultiLanguageStringToStringByLanguage1(I.idit_Comment, 25) N'comment' --комментарий к товарной позиции
 	-- ,dbo.f_MultiLanguageStringToStringByLanguage1(MI.meit_Name, 25) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
-	,'PCE' N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+	,ISNULL(CONVERT(NVARCHAR(MAX), NM.note_Value), @Measure_Default) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
 	,I.idit_Volume N'requestedQuantity/text()' --заказанное количество
 	,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
 	,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
@@ -125,6 +129,7 @@ FROM KonturEDI.dbo.edi_Messages M
 JOIN InputDocumentItems       I ON I.idit_idoc_ID = M.doc_ID
 JOIN ProductItems             P ON P.pitm_ID = I.idit_pitm_ID
 JOIN MeasureItems            MI ON MI.meit_ID = idit_meit_ID
+LEFT JOIN Notes              NM ON NM.note_obj_ID = idit_meit_ID AND note_nttp_ID = @nttp_ID_Measure
 LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
 WHERE M.messageId = @messageId  
 FOR XML PATH(N'lineItem'), TYPE)
@@ -171,7 +176,7 @@ LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
 WHERE M.messageId = @messageId
 
 EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
-EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, 0, @buyer OUTPUT
+EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, 1, @buyer OUTPUT
 --EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
 EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @idoc_Date, @deliveryInfo OUTPUT
 

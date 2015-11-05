@@ -122,13 +122,16 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	IF @TRANCOUNT > @@TRANCOUNT
 	  BEGIN TRAN
 
-	EXEC tpsys_ReraiseError
-  END CATCH
+	    -- Ошибки в таблицу, обработаем потом
+		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+	    SELECT 'ImportDESADV', ERROR_NUMBER(), ERROR_MESSAGE()
+	    -- EXEC tpsys_ReraiseError
+    END CATCH
   
-  IF OBJECT_ID('tempdb..#Messages') IS NOT NULL 
-    DROP TABLE #Messages 
+    IF OBJECT_ID('tempdb..#Messages') IS NOT NULL 
+        DROP TABLE #Messages 
  
-  FETCH ct INTO @fname, @full_fname
+    FETCH ct INTO @fname, @full_fname
 END
 
 CLOSE ct

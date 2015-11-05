@@ -17,12 +17,13 @@ AS
 DECLARE 
      @note_ID UNIQUEIDENTIFIER
     ,@tpsyso_ID UNIQUEIDENTIFIER
-	,@nttp_ID UNIQUEIDENTIFIER
-	,@nttp_ID_log UNIQUEIDENTIFIER
+	,@nttp_ID_Status UNIQUEIDENTIFIER
+	,@nttp_ID_Log UNIQUEIDENTIFIER
 	,@Value sql_variant
 
-SET @nttp_ID = 'FC9F6DE1-3CF3-5247-AE66-8EFC7B40C5B8'
-SET @nttp_ID_log = '7A89CB1E-8976-0144-9A26-15D6246CB826'
+--
+SELECT TOP 1 @nttp_ID_Status = nttp_ID_Status, @nttp_ID_Log = nttp_ID_Log 
+FROM KonturEDI.dbo.edi_Settings
 --
 IF @doc_Type = 'request'
     SELECT @tpsyso_ID = tpsyso_ID
@@ -33,7 +34,7 @@ IF @doc_Type = 'input'
     FROM sys_Objects
     WHERE tpsyso_Name LIKE '%Приходная накладная%'
 --
-SELECT @note_ID = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID AND note_obj_ID = @doc_ID
+SELECT @note_ID = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_Status AND note_obj_ID = @doc_ID
 --
 SET @Value = CONVERT(NVARCHAR(4000), CONVERT(NVARCHAR(MAX), ISNULL(@Date, GETDATE()), 127) + ' - ' + @Status)
 
@@ -42,7 +43,7 @@ IF @note_ID IS NOT NULL
     DELETE FROM Notes WHERE note_ID = @note_ID
 
 INSERT INTO Notes (note_ID, note_nttp_ID, note_obj_ID, note_item_ID, note_Value, note_tpsyso_ID)
-VALUES(NEWID(), @nttp_ID, @doc_ID, @doc_ID, @Value, @tpsyso_ID)
+VALUES(NEWID(), @nttp_ID_Status, @doc_ID, @doc_ID, @Value, @tpsyso_ID)
 
 /*ELSE 
     UPDATE Notes

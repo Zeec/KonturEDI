@@ -9,89 +9,90 @@ IF OBJECT_ID('external_ImportReports', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_ImportReports (
-  @ReportsPath NVARCHAR(255))
+     @ReportsPath NVARCHAR(255))
 WITH EXECUTE AS OWNER
 AS
-DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
-
-DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
-DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
---DECLARE @usr_ID_Msg UNIQUEIDENTIFIER
 DECLARE @TRANCOUNT INT
+
+DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
 DECLARE @dateTime NVARCHAR(MAX), @description NVARCHAR(MAX)
 
+--
+DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
+DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @ReportsPath, 1, 1
 
 --бежим по списку
 DECLARE ct CURSOR FOR
-  SELECT fname, @ReportsPath+'\'+fname AS full_fname FROM @t
+    SELECT fname, @ReportsPath+'\'+fname AS full_fname FROM @t
 
 OPEN ct
 FETCH ct INTO @fname, @full_fname
 
 WHILE @@FETCH_STATUS = 0 BEGIN
   
-  SET @xml = NULL
-  SET @SQL = 'SELECT @xml = CAST(x.data as XML) FROM OPENROWSET(BULK '+QUOTENAME(@full_fname, CHAR(39))+' , SINGLE_BLOB) AS x(data)'
-  EXEC sp_executesql @SQL, N'@xml xml out', @xml = @xml out
+    SET @xml = NULL
+    SET @SQL = 'SELECT @xml = CAST(x.data as XML) FROM OPENROWSET(BULK '+QUOTENAME(@full_fname, CHAR(39))+' , SINGLE_BLOB) AS x(data)'
+    EXEC sp_executesql @SQL, N'@xml xml out', @xml = @xml out
  
-  IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 
+    IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 
  
-  SET @TRANCOUNT = @@TRANCOUNT
-  IF @TRANCOUNT = 0
-	BEGIN TRAN external_ImportReports
-  ELSE
-	SAVE TRAN external_ImportReports
+    SET @TRANCOUNT = @@TRANCOUNT
+    IF @TRANCOUNT = 0
+	    BEGIN TRAN external_ImportReports
+    ELSE
+ 	    SAVE TRAN external_ImportReports
 
-  BEGIN TRY
-	-- Сообщение
-    SELECT 
-	  n.value('../messageId[1]', 'NVARCHAR(MAX)') AS 'messageId',
-      n.value('dateTime[1]', 'NVARCHAR(MAX)') AS 'dateTime',
-      n.value('description[1]', 'NVARCHAR(MAX)') AS 'description'
-    INTO #Messages
-    FROM @xml.nodes('/statusReport/reportItem/statusItem') t(n)
+    BEGIN TRY
+	  -- Сообщение
+      SELECT 
+	      n.value('../messageId[1]', 'NVARCHAR(MAX)') AS 'messageId',
+          n.value('dateTime[1]', 'NVARCHAR(MAX)') AS 'dateTime',
+          n.value('description[1]', 'NVARCHAR(MAX)') AS 'description'
+      INTO #Messages
+      FROM @xml.nodes('/statusReport/reportItem/statusItem') t(n)
 	
-    
-	-- На какое сообщение пришел ответ
-    SELECT TOP 1 @messageId = messageId, @dateTime = dateTime, @description = description FROM #Messages
-    -- Внутренний ID документа в Тиллипад
-	SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE @messageId = messageId
+      -- На какое сообщение пришел ответ
+      SELECT TOP 1 @messageId = messageId, @dateTime = dateTime, @description = description FROM #Messages
 	
-	IF @doc_ID IS NOT NULL 
-	    EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @description, @dateTime
-
-	-- UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
-	-- Лог
-	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
-	VALUES (@xml, 'Получено статусное сообщение', @messageId, @doc_ID)
-
-	-- ACK
-    SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
-	--PRINT @CMD
-    EXEC @R = master..xp_cmdshell @cmd --, NO_OUTPUT
+      -- Внутренний ID документа в Тиллипад
+	  SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE messageId =  @messageId 
 	
-	IF @TRANCOUNT = 0 
-  	  COMMIT TRAN
-  END TRY
-  BEGIN CATCH
-    -- Ошибка загрузки файла, пишем ошибку приема
-	IF @@TRANCOUNT > 0
-	  IF (XACT_STATE()) = -1
-	    ROLLBACK
-	  ELSE
-	    ROLLBACK TRAN external_ImportReports
-	IF @TRANCOUNT > @@TRANCOUNT
-	  BEGIN TRAN
+	  IF @doc_ID IS NOT NULL 
+	      EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @description, @dateTime
 
-	EXEC tpsys_ReraiseError
-  END CATCH
+	  -- UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
+	  -- Лог
+	  INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	  VALUES (@xml, 'Получено статусное сообщение', @messageId, @doc_ID)
+
+	  -- Сообщение обработано, удаляем
+      SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
+      EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
+	
+	  IF @TRANCOUNT = 0 
+  	      COMMIT TRAN
+    END TRY
+    BEGIN CATCH
+        -- Ошибка загрузки файла, пишем ошибку приема
+	    IF @@TRANCOUNT > 0
+	        IF (XACT_STATE()) = -1
+	            ROLLBACK
+	        ELSE
+	            ROLLBACK TRAN external_ImportReports
+  	    IF @TRANCOUNT > @@TRANCOUNT
+	        BEGIN TRAN
+
+	    -- Ошибки в таблицу, обработаем потом
+		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+	    SELECT 'ImportReports', ERROR_NUMBER(), ERROR_MESSAGE()
+	    -- EXEC tpsys_ReraiseError
+    END CATCH
   
-  IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 
- 
-  FETCH ct INTO @fname, @full_fname
+    IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 
+    FETCH ct INTO @fname, @full_fname
 END
 
 CLOSE ct

@@ -1,18 +1,28 @@
+
 --UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 0 WHERE messageId ='725AF034-D4C2-48BB-A5A2-EE1D967E1452'
 
 /*UPDATE KonturEDI.dbo.edi_Messages 
 SET IsProcessed = 0
 where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
 
+
 EXEC tpsrv_logon 'sv', '1'
 EXEC external_EDIKontur
 
-select * from  KonturEDI.dbo.edi_MessagesLog where doc_ID = '86920DB0-8B1F-0642-82C8-96ED99A62865' order by log_Date
-select * from  KonturEDI.dbo.edi_MessagesLog  order by log_Date
 
-select * from  KonturEDI.dbo.edi_Messages order by doc_Date
+
+
+-- EXEC external_EDIKontur
+
+--select * from tp_NoteTypes where nttp_pagecaption = 'EDIKontur'
+--select * from tp_NoteTypeObjects where nttpo_nttp_ID = '74d6e928-475b-4f4c-8bc7-c216def422d6'
+
+--select * from  KonturEDI.dbo.edi_MessagesLog where doc_ID = '86920DB0-8B1F-0642-82C8-96ED99A62865' order by log_Date
+--select * from  KonturEDI.dbo.edi_MessagesLog  order by log_Date desc
+
+--select * from  KonturEDI.dbo.edi_Messages order by doc_Date
 --select * from InputDocuments order by idoc_Date where idoc_ID = 'DBD04B8E-76DE-4AAF-9BA1-56F291C13F6A'
-select * from InputDocumentItems where idit_idoc_ID = 'DBD04B8E-76DE-4AAF-9BA1-56F291C13F6A'
+--select * from InputDocumentItems where idit_idoc_ID = 'DBD04B8E-76DE-4AAF-9BA1-56F291C13F6A'
 --EXEC external_CreateInputFromRequest '86920DB0-8B1F-0642-82C8-96ED99A62865', 400
 /*
 

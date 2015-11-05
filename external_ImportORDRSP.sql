@@ -12,6 +12,7 @@ CREATE PROCEDURE dbo.external_ImportORDRSP (
   @Path NVARCHAR(255))
 WITH EXECUTE AS OWNER
 AS
+
 -- Прием сообщений
 DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(MAX), @message_ID UNIQUEIDENTIFIER
 
@@ -99,29 +100,33 @@ WHILE @@FETCH_STATUS = 0 BEGIN
       EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
 
-    SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
-    EXEC @R = master..xp_cmdshell @cmd 
+	    -- Сообщение обработано, удаляем
+        SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
+        EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
 
- 	IF @TRANCOUNT = 0 
-  	  COMMIT TRAN
-  END TRY
-  BEGIN CATCH
-    -- Ошибка загрузки файла, пишем ошибку приема
-	IF @@TRANCOUNT > 0
-	  IF (XACT_STATE()) = -1
-	    ROLLBACK
-	  ELSE
-	    ROLLBACK TRAN external_ImportORDRSP
-	IF @TRANCOUNT > @@TRANCOUNT
-	  BEGIN TRAN
+ 	    IF @TRANCOUNT = 0 
+  	        COMMIT TRAN
+    END TRY
+    BEGIN CATCH
+        -- Ошибка загрузки файла, пишем ошибку приема
+	    IF @@TRANCOUNT > 0
+	        IF (XACT_STATE()) = -1
+	            ROLLBACK
+	        ELSE
+	            ROLLBACK TRAN external_ImportORDRSP
+  	    IF @TRANCOUNT > @@TRANCOUNT
+	        BEGIN TRAN
 
-	EXEC tpsys_ReraiseError
-  END CATCH
+	    -- Ошибки в таблицу, обработаем потом
+		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+	    SELECT 'ImportORDRSP', ERROR_NUMBER(), ERROR_MESSAGE()
+	    -- EXEC tpsys_ReraiseError
+    END CATCH
   
-  IF OBJECT_ID('tempdb..#Messages') IS NOT NULL 
-    DROP TABLE #Messages 
+    IF OBJECT_ID('tempdb..#Messages') IS NOT NULL 
+        DROP TABLE #Messages 
  
-  FETCH ct INTO @fname, @full_fname
+    FETCH ct INTO @fname, @full_fname
 END
 
 CLOSE ct
