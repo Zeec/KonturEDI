@@ -30,19 +30,6 @@ SET @message_ID = NEWID()
 INSERT INTO KonturEDI.dbo.edi_Messages (messageID, doc_Name, doc_Date, doc_Type)
 VALUES (@message_ID, (SELECT ISNULL(MAX(CONVERT(INT, doc_Name)), 0)+1 FROM KonturEDI.dbo.edi_Messages WHERE doc_Type = 'partin'), GETDATE(), 'partin')
 
-
-
-    SELECT @GLN_Sender = CONVERT(NVARCHAR(MAX), note_Value)
-	FROM Partners       P
-	LEFT JOIN Notes     N ON N.note_obj_ID = P.part_ID AND note_nttp_ID = @nttp_ID_GLN
-    WHERE part_ID = @part_ID_Sender
-  
-    SELECT @GLN_Recipient = CONVERT(NVARCHAR(MAX), note_Value)
-	FROM Partners       P
-	LEFT JOIN Notes     N ON N.note_obj_ID = P.part_ID AND note_nttp_ID = @nttp_ID_GLN
-    WHERE part_ID = @part_ID_Recipient
-
-
 DECLARE @Result NVARCHAR(MAX)
 SET @Result =
 (SELECT
@@ -124,46 +111,6 @@ LEFT JOIN Notes          NR ON NR.note_obj_ID = PR.part_ID AND NR.note_nttp_ID =
 WHERE M.messageId = @message_ID
 FOR XML RAW(N'eDIMessage'))	
 
-select CONVERT(XML, @Result	)
-	
-	/*    ,
-	(
-		SELECT
-			@GLN_Sender N'sender',
-			@GLN_Recipient N'recipient',
-			'PARTIN' N'documentType'
-			,NULL 'IsTest'
-		FOR XML PATH(N'interchangeHeader'), TYPE
-	),
-	(SELECT 
- 	'008' N'number' 
-	   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, creationDateTime), 127) N'date'
-	   
-	,(SELECT 
- 	 	 CONVERT(NVARCHAR(MAX), note_Value) N'gln' --gln поставщика
-		,dbo.f_MultiLanguageStringToStringByLanguage1(part_Name, 25) N'organization/name' --наименование поставщика для ЮЛ	
-		,dbo.f_MultiLanguageStringToStringByLanguage1(firm_INN, 25) N'organization/inn' --ИНН поставщика для ЮЛ
-		,dbo.f_MultiLanguageStringToStringByLanguage1(firm_KPP, 25) N'organization/kpp' --КПП поставщика только для ЮЛ
-		--российский адрес
-            ,dbo.f_MultiLanguageStringToStringByLanguage1(addr_RegionCode, 25) N'russianAddress/regionISOCode'
-    	    ,dbo.f_MultiLanguageStringToStringByLanguage1(addr_Area, 25) N'russianAddress/district'
-			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_City, 25) N'russianAddress/city'
-			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_Street, 25) N'russianAddress/street'
-			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_House, 25) N'russianAddress/house'
-			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_Apartment, 25) N'russianAddress/flat'
-			,dbo.f_MultiLanguageStringToStringByLanguage1(addr_PostCode, 25) N'russianAddress/postalCode'
-		,dbo.f_MultiLanguageStringToStringByLanguage1(firm_phone, 25) N'additionalInfo/phone' --телефон контактного лица
-		,dbo.f_MultiLanguageStringToStringByLanguage1(PD.pepl_SecondName, 25) N'additionalInfo/nameOfCEO' --телефон контактного лица
-		,dbo.f_MultiLanguageStringToStringByLanguage1(PA.pepl_SecondName, 25) N'additionalInfo/nameOfAccountant' --телефон контактного лица
-	FROM Partners       P
-	LEFT JOIN Firms     F ON F.firm_ID = P.part_firm_ID 
-	LEFT JOIN Addresses A ON A.addr_obj_ID = F.firm_ID AND addr_Type = 2 -- CASE WHEN T2.part_firm_ID IS NULL THEN 3 ELSE 2 END AdddrType  -- рабочий (ФЛ) или юридический (ЮЛ) адрес
-	LEFT JOIN People   PD ON PD.pepl_ID = F.firm_pepl_ID_Director 
-	LEFT JOIN People   PA ON PA.pepl_ID = F.firm_pepl_ID_Accountant
-	LEFT JOIN Notes     N ON N.note_obj_ID = P.part_ID AND note_nttp_ID = @nttp_ID_GLN
-    WHERE part_ID = @part_ID_Sender
-	FOR XML PATH(N'headGLN'), TYPE) 
-	FOR XML PATH(N'partyInformation'), TYPE)*/
 --------------------------------------------------------------------------------
 DECLARE @File SYSNAME, @R NVARCHAR(MAX)
 SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
