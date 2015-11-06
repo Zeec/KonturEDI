@@ -27,12 +27,13 @@ CREATE TABLE #EDIErrors (ProcedureName NVARCHAR(100), ErrorNumber INT, ErrorMess
 IF OBJECT_ID(N'tempdb..#EDISettings') IS NOT NULL DROP TABLE #EDISettings
 CREATE TABLE #EDISettings (InboxPath NVARCHAR(MAX), OutboxPath NVARCHAR(MAX), ReportsPath NVARCHAR(MAX), 
     ActionsPath NVARCHAR(MAX), nttp_ID_GLN UNIQUEIDENTIFIER, nttp_ID_GTIN UNIQUEIDENTIFIER, nttp_ID_idoc_Name UNIQUEIDENTIFIER,
-	nttp_ID_idoc_Date UNIQUEIDENTIFIER, nttp_ID_Status UNIQUEIDENTIFIER, nttp_ID_Log UNIQUEIDENTIFIER, nttp_ID_Measure UNIQUEIDENTIFIER)
+	nttp_ID_idoc_Date UNIQUEIDENTIFIER, nttp_ID_Status UNIQUEIDENTIFIER, nttp_ID_Log UNIQUEIDENTIFIER, nttp_ID_Measure UNIQUEIDENTIFIER,
+	ShowAdditionalInfo INT)
 
 INSERT INTO #EDISettings (InboxPath, OutboxPath, ReportsPath, ActionsPath, nttp_ID_GLN, nttp_ID_GTIN, nttp_ID_idoc_Name, 
-	nttp_ID_idoc_Date, nttp_ID_Status, nttp_ID_Log, nttp_ID_Measure)
+	nttp_ID_idoc_Date, nttp_ID_Status, nttp_ID_Log, nttp_ID_Measure, ShowAdditionalInfo)
 SELECT TOP 1 InboxPath, OutboxPath, ReportsPath, ActionsPath, nttp_ID_GLN, nttp_ID_GTIN, nttp_ID_idoc_Name, 
-	nttp_ID_idoc_Date, nttp_ID_Status, nttp_ID_Log, nttp_ID_Measure
+	nttp_ID_idoc_Date, nttp_ID_Status, nttp_ID_Log, nttp_ID_Measure, 0
 FROM KonturEDI.dbo.edi_Settings
 
 -- Настройки
@@ -45,8 +46,17 @@ DECLARE
 SELECT @InboxPath = InboxPath, @OutboxPath = OutboxPath, @ActionsPath = ActionsPath
 FROM #EDISettings
 
-EXEC external_ExportPARTIN
+DECLARE
+    
+     @nttp_ID_GLN UNIQUEIDENTIFIER
+	-- GLN отправителя сообщения
+    ,@part_ID_Sender UNIQUEIDENTIFIER = 'E8687459-FC7F-474D-B15A-37A0E9EBC125'
+DECLARE @seller XML
+EXEC dbo.external_GetSellerXML @part_ID_Sender, @seller OUTPUT
+select @seller
 return
+
+-- EXEC external_ExportPARTIN
 --------------------------------------------------------------------------------
 -- Прием статустных сообщений
 SET @cmd = @ActionsPath+'get_reports.cmd'

@@ -41,50 +41,50 @@ WHILE @@FETCH_STATUS = 0 BEGIN
     BEGIN TRY
 
 
--- Элементы заказа
-SET @LineItem = (
-SELECT
-     CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
-    ,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
-	,I.strqti_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
-	,I.strqti_Order N'lineNumber' --порядковый номер товара
-	,NULL N'typeOfUnit' --признак возвратной тары, если это не тара, то строки нет
-	,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.strqti_ItemName, P.pitm_Name), 25) N'description' --название товара
-	,dbo.f_MultiLanguageStringToStringByLanguage1(I.strqti_Comment, 25) N'comment' --комментарий к товарной позиции
-	,ISNULL(CONVERT(NVARCHAR(MAX), NM.note_Value), @Measure_Default) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
-	,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
-	,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
-	,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
---	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
-	,I.strqti_Price N'netPrice' --цена товара без НДС
-	,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
-	,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
-	--,NULL N'exciseDuty' --акциз товара
-	,I.strqti_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
-	,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
-	,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
-FROM KonturEDI.dbo.edi_Messages M
-JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
-JOIN ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
-JOIN MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
--- Единица измерения
-LEFT JOIN Notes              NM ON NM.note_obj_ID = strqti_meit_ID AND note_nttp_ID = @nttp_ID_Measure
-LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
-WHERE M.messageId = @message_ID  --'AA215039-87FE-4EA6-B9B4-CAFE688864D1'
-FOR XML PATH(N'lineItem'), TYPE)
+		-- Элементы заказа
+		SET @LineItem = 
+		(SELECT
+			 CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
+			,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
+			,I.strqti_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
+			,I.strqti_Order N'lineNumber' --порядковый номер товара
+			,NULL N'typeOfUnit' --признак возвратной тары, если это не тара, то строки нет
+			,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.strqti_ItemName, P.pitm_Name), 25) N'description' --название товара
+			,dbo.f_MultiLanguageStringToStringByLanguage1(I.strqti_Comment, 25) N'comment' --комментарий к товарной позиции
+			,ISNULL(CONVERT(NVARCHAR(MAX), NM.note_Value), @Measure_Default) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+			,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
+			,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
+			,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
+		--	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
+			,I.strqti_Price N'netPrice' --цена товара без НДС
+			,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
+			,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
+			--,NULL N'exciseDuty' --акциз товара
+			,I.strqti_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+			,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
+			,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
+		FROM KonturEDI.dbo.edi_Messages M
+		JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
+		JOIN ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
+		JOIN MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
+		-- Единица измерения
+		LEFT JOIN Notes              NM ON NM.note_obj_ID = strqti_meit_ID AND note_nttp_ID = @nttp_ID_Measure
+		LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
+		WHERE M.messageId = @message_ID  --'AA215039-87FE-4EA6-B9B4-CAFE688864D1'
+		FOR XML PATH(N'lineItem'), TYPE)
 
-SET @LineItems = (
-SELECT
-     'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
-	,@LineItem
-    ,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
-	,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
-	,SUM(strqti_Sum + strqti_SumVAT) N'totalAmount' -- --общая сумма заказа всего с НДС
-FROM KonturEDI.dbo.edi_Messages M
-JOIN StoreRequests           R ON R.strqt_ID = M.doc_ID
-JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
-WHERE M.messageId = @message_ID
-FOR XML PATH(N'lineItems'), TYPE)
+		SET @LineItems = 
+			(SELECT
+				 'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
+				,@LineItem
+				,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
+				,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
+				,SUM(strqti_Sum + strqti_SumVAT) N'totalAmount' -- --общая сумма заказа всего с НДС
+			FROM KonturEDI.dbo.edi_Messages M
+			JOIN StoreRequests           R ON R.strqt_ID = M.doc_ID
+			JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
+			WHERE M.messageId = @message_ID
+			FOR XML PATH(N'lineItems'), TYPE)
 
 
 -- seller
@@ -129,11 +129,10 @@ SET @buyerGLN = @buyer.value('(/buyer/gln)[1]', 'NVARCHAR(MAX)')
 --return
 
 DECLARE @Result NVARCHAR(MAX)
-SET @Result=
-	(
-		SELECT
-			messageId N'id',
-            creationDateTime N'creationDateTime',
+		SET @Result=
+			(SELECT
+				 messageId N'id'
+				,creationDateTime N'creationDateTime',
 			(
 				SELECT
 					@buyerGLN N'sender',

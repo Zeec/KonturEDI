@@ -9,6 +9,7 @@ where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
 EXEC tpsrv_logon 'sv', '1'
 EXEC external_EDIKontur
 
+
 --select * from tp_StoreRequests
 
 
