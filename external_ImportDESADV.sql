@@ -61,7 +61,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
       n.value('despatchAdvice[1]/originOrder[1]/@date', 'NVARCHAR(MAX)') AS 'originOrder_date'
     INTO #Messages
     FROM @xml.nodes('/eDIMessage') t(n)
-	select * from #Messages
+
 	-- Надо бы проверку
 
     -- Accepted/Rejected/Changed
@@ -74,7 +74,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  FROM #Messages T
 	  JOIN KonturEDI.dbo.edi_Messages M ON M.doc_Name = originOrder_number AND CONVERT(DATE, M.doc_Date) = CONVERT(DATE, originOrder_date)
 	  WHERE M.doc_Type = 'request'
-	    select @doc_ID, @doc_Type
+
 	  -- Лог
 	  INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
   	  VALUES (@xml, 'Получено уведомление об отгрузке', @message_ID, @doc_ID)

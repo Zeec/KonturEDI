@@ -9,7 +9,7 @@ where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
 EXEC tpsrv_logon 'sv', '1'
 EXEC external_EDIKontur
 
-
+--select * from tp_StoreRequests
 
 
 -- EXEC external_EDIKontur
@@ -99,7 +99,7 @@ go
 ,	[type]		AS [param/text()]
 FROM	master.dbo.spt_values
 WHERE	type = 'A'
-FOR XML Path('eDIMessage'),Type
+FOR XML Path('params'),Type
 <params>
   <param type="name">rpc</param>
   <param type="number">1</param>

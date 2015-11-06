@@ -4,7 +4,7 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-IF OBJECT_ID(N'external_ExportORDERS', 'P') IS NOT NULL 
+IF OBJECT_ID(N'external_ExportORDERS', 'P') IS NOT NULL
   DROP PROCEDURE dbo.external_ExportORDERS
 GO
 
@@ -32,7 +32,7 @@ BEGIN TRY
 
 -- Элементы заказа
 SET @LineItem = (
-SELECT 
+SELECT
      CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
     ,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
 	,I.strqti_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
@@ -80,7 +80,7 @@ FOR XML PATH(N'lineItems'), TYPE)
 
 
 -- seller
-DECLARE 
+DECLARE
      @part_ID_Out UNIQUEIDENTIFIER
 	,@part_ID_Self UNIQUEIDENTIFIER
 	,@addr_ID UNIQUEIDENTIFIER
@@ -88,7 +88,7 @@ DECLARE
 DECLARE @seller XML, @buyer XML, @invoicee XML, @deliveryInfo XML
 DECLARE @strqt_DateInput DATETIME
 
-SELECT TOP 1 
+SELECT TOP 1
      -- Поставщик
      @part_ID_Out = R.strqt_part_ID_Out
 	 -- Своя организация
@@ -125,7 +125,7 @@ SET @Result=
 	--N'<?xml  version ="1.0"  encoding ="utf-8"?>'+
 	(
 		SELECT
-			messageId N'id', 
+			messageId N'id',
             creationDateTime N'creationDateTime',
 			(
 				SELECT
@@ -138,7 +138,7 @@ SET @Result=
 				FOR XML PATH(N'interchangeHeader'), TYPE
 			)
 			,(
-			    SELECT 
+			    SELECT
 				--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
 				   -- R.strqt_Name N'@number'
 				    R.strqt_Name N'@number'
@@ -146,7 +146,7 @@ SET @Result=
 				   ,R.strqt_ID N'@id'
 				   ,N'Original' N'@status'
 				   ,NULL N'@revisionNumber'
-				   
+
 				   ,NULL N'promotionDealNumber'
 				   -- Договор
 				   ,C.pcntr_Name N'contractIdentificator/@number'
@@ -176,10 +176,10 @@ SET @Result=
 	-- Статус отправлен
 	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
 	-- Лог
-	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
+	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID)
 	VALUES (@Result, 'Отправлена заявка поставщику', @messageId, @doc_ID)
 
- 	IF @TRANCOUNT = 0 
+ 	IF @TRANCOUNT = 0
   	    COMMIT TRAN
 END TRY
 BEGIN CATCH

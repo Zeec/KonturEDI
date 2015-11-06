@@ -8,8 +8,7 @@ IF OBJECT_ID('external_ImportReports', 'P') IS NOT NULL
   DROP PROCEDURE dbo.external_ImportReports
 GO
 
-CREATE PROCEDURE dbo.external_ImportReports (
-     @ReportsPath NVARCHAR(255))
+CREATE PROCEDURE dbo.external_ImportReports 
 WITH EXECUTE AS OWNER
 AS
 DECLARE @TRANCOUNT INT
@@ -17,9 +16,13 @@ DECLARE @TRANCOUNT INT
 DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
 DECLARE @dateTime NVARCHAR(MAX), @description NVARCHAR(MAX)
 
---
+-- 
 DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
 DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
+
+-- Настройки путей
+DECLARE @ReportsPath NVARCHAR(MAX)
+SELECT @ReportsPath = ReportsPath FROM #EDISettings
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @ReportsPath, 1, 1
