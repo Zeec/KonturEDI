@@ -8,77 +8,12 @@ IF OBJECT_ID(N'external_ExportORDERS', 'P') IS NOT NULL
   DROP PROCEDURE dbo.external_ExportORDERS
 GO
 
-CREATE PROCEDURE dbo.external_ExportORDERS (
-     @messageId UNIQUEIDENTIFIER
-	,@doc_ID UNIQUEIDENTIFIER)
+CREATE PROCEDURE dbo.external_ExportORDERS 
 AS
 DECLARE @TRANCOUNT INT
 DECLARE @LineItem XML, @LineItems XML
-
--- Единица измерения
-DECLARE @nttp_ID_Measure UNIQUEIDENTIFIER = '35D20336-935E-B042-B0F7-7D5FDF032AB2'
-DECLARE @Measure_Default NVARCHAR(10) = 'PCE'
-
-
-  SET @TRANCOUNT = @@TRANCOUNT
-  IF @TRANCOUNT = 0
-	  BEGIN TRAN external_ExportORDERS
-  ELSE
-	  SAVE TRAN external_ExportORDERS
-
--- Формирование файлов-заказов ORDERS
-BEGIN TRY
-
-
--- Элементы заказа
-SET @LineItem = (
-SELECT
-     CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
-    ,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
-	,I.strqti_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
-	,I.strqti_Order N'lineNumber' --порядковый номер товара
-	,NULL N'typeOfUnit' --признак возвратной тары, если это не тара, то строки нет
-	,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.strqti_ItemName, P.pitm_Name), 25) N'description' --название товара
-	,dbo.f_MultiLanguageStringToStringByLanguage1(I.strqti_Comment, 25) N'comment' --комментарий к товарной позиции
-	-- ,dbo.f_MultiLanguageStringToStringByLanguage1(MI.meit_Name, 25) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
-	,ISNULL(CONVERT(NVARCHAR(MAX), NM.note_Value), @Measure_Default) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
-	,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
-	,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
-	,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
---	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
-	,I.strqti_Price N'netPrice' --цена товара без НДС
-	,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
-	,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
-	--,NULL N'exciseDuty' --акциз товара
-	,I.strqti_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
-	,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
-	,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
-FROM KonturEDI.dbo.edi_Messages M
-JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
-JOIN ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
-JOIN MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
--- Единица измерения
-LEFT JOIN Notes              NM ON NM.note_obj_ID = strqti_meit_ID AND note_nttp_ID = @nttp_ID_Measure
-LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
-WHERE M.messageId = @messageId  --'AA215039-87FE-4EA6-B9B4-CAFE688864D1'
-FOR XML PATH(N'lineItem'), TYPE)
-
-
-
-SET @LineItems = (
-SELECT
-     'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
-	,@LineItem
-    ,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
-	,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
-	,SUM(strqti_Sum + strqti_SumVAT) N'totalAmount' -- --общая сумма заказа всего с НДС
-FROM KonturEDI.dbo.edi_Messages M
-JOIN StoreRequests           R ON R.strqt_ID = M.doc_ID
-JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
-WHERE M.messageId = @messageId
-FOR XML PATH(N'lineItems'), TYPE)
-
-
+DECLARE @File SYSNAME, @R NVARCHAR(MAX)
+DECLARE @Result NVARCHAR(MAX)
 -- seller
 DECLARE
      @part_ID_Out UNIQUEIDENTIFIER
@@ -87,59 +22,124 @@ DECLARE
 
 DECLARE @seller XML, @buyer XML, @invoicee XML, @deliveryInfo XML
 DECLARE @strqt_DateInput DATETIME
+DECLARE @message_ID UNIQUEIDENTIFIER
+DECLARE @doc_ID UNIQUEIDENTIFIER
+-- Единица измерения
+DECLARE @nttp_ID_Measure UNIQUEIDENTIFIER
+DECLARE @Measure_Default NVARCHAR(10) = 'PCE'
 
-SELECT TOP 1
-     -- Поставщик
-     @part_ID_Out = R.strqt_part_ID_Out
-	 -- Своя организация
-	,@part_ID_Self = G.stgr_part_ID
-	-- Адрес склада
-	,@addr_ID = addr_ID
-	,@strqt_DateInput = strqt_DateInput
-FROM KonturEDI.dbo.edi_Messages M
-JOIN tp_StoreRequests           R ON R.strqt_ID = M.doc_ID
--- Склады
-JOIN tp_Stores      S ON S.stor_ID = strqt_stor_ID_In
-JOIN tp_StoreGroups G ON G.stgr_ID = S.stor_stgr_ID
--- Своя организация
--- LEFT JOIN tp_Partners SelfParnter ON SelfParnter.part_ID = stgr_part_ID
--- Адрес склада
-LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
-WHERE M.messageId = @messageId
+SELECT @nttp_ID_Measure = nttp_ID_Measure
+FROM #EDISettings
 
-EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
-EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, 1, @buyer OUTPUT
---EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
-EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @strqt_DateInput, @deliveryInfo OUTPUT
+--бежим по списку
+DECLARE ct CURSOR FOR
+    SELECT TOP 1 messageId, doc_ID 
+	FROM KonturEDI.dbo.edi_Messages 
+	WHERE doc_Type = 'request' AND IsProcessed = 0
 
-DECLARE @senderGLN NVARCHAR(MAX), @buyerGLN NVARCHAR(MAX)
-SET @senderGLN = @seller.value('(/seller/gln)[1]', 'NVARCHAR(MAX)')
-SET @buyerGLN = @buyer.value('(/buyer/gln)[1]', 'NVARCHAR(MAX)')
+OPEN ct
+FETCH ct INTO @message_ID, @doc_ID
 
---SELECT @senderGLN , @buyerGLN
--- SELECT @buyer
---return
+WHILE @@FETCH_STATUS = 0 BEGIN 
 
-DECLARE @Result NVARCHAR(MAX)
-SET @Result=
-	--N'<?xml  version ="1.0"  encoding ="utf-8"?>'+
-	(
-		SELECT
-			messageId N'id',
-            creationDateTime N'creationDateTime',
-			(
-				SELECT
+    SET @TRANCOUNT = @@TRANCOUNT
+    IF @TRANCOUNT = 0 
+	    BEGIN TRAN external_ExportORDERS
+    ELSE              
+	    SAVE TRAN external_ExportORDERS
+
+    -- Формирование файлов-заказов ORDERS
+    BEGIN TRY
+
+
+		-- Элементы заказа
+		SET @LineItem = 
+		(SELECT
+			 CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
+			,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
+			,I.strqti_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
+			,I.strqti_Order N'lineNumber' --порядковый номер товара
+			,NULL N'typeOfUnit' --признак возвратной тары, если это не тара, то строки нет
+			,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.strqti_ItemName, P.pitm_Name), 25) N'description' --название товара
+			,dbo.f_MultiLanguageStringToStringByLanguage1(I.strqti_Comment, 25) N'comment' --комментарий к товарной позиции
+			,ISNULL(CONVERT(NVARCHAR(MAX), NM.note_Value), @Measure_Default) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
+			,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
+			,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
+			,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
+		--	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
+			,I.strqti_Price N'netPrice' --цена товара без НДС
+			,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
+			,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
+			--,NULL N'exciseDuty' --акциз товара
+			,I.strqti_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+			,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
+			,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
+		FROM KonturEDI.dbo.edi_Messages M
+		JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
+		JOIN ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
+		JOIN MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
+		-- Единица измерения
+		LEFT JOIN Notes              NM ON NM.note_obj_ID = strqti_meit_ID AND note_nttp_ID = @nttp_ID_Measure
+		LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
+		WHERE M.messageId = @message_ID  --'AA215039-87FE-4EA6-B9B4-CAFE688864D1'
+		FOR XML PATH(N'lineItem'), TYPE)
+
+		SET @LineItems = 
+			(SELECT
+				 'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
+				,@LineItem
+				,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
+				,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
+				,SUM(strqti_Sum + strqti_SumVAT) N'totalAmount' -- --общая сумма заказа всего с НДС
+			FROM KonturEDI.dbo.edi_Messages M
+			JOIN StoreRequests           R ON R.strqt_ID = M.doc_ID
+			JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
+			WHERE M.messageId = @message_ID
+			FOR XML PATH(N'lineItems'), TYPE)
+
+		SELECT TOP 1
+			-- Поставщик
+			@part_ID_Out = R.strqt_part_ID_Out
+			-- Своя организация
+			,@part_ID_Self = G.stgr_part_ID
+			-- Адрес склада
+			,@addr_ID = addr_ID
+			,@strqt_DateInput = strqt_DateInput
+		FROM KonturEDI.dbo.edi_Messages M
+		JOIN StoreRequests           R ON R.strqt_ID = M.doc_ID
+		-- Склады
+		JOIN Stores      S ON S.stor_ID = strqt_stor_ID_In
+		JOIN StoreGroups G ON G.stgr_ID = S.stor_stgr_ID
+		-- Своя организация
+		-- LEFT JOIN tp_Partners SelfParnter ON SelfParnter.part_ID = stgr_part_ID
+		-- Адрес склада
+		LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
+		WHERE M.messageId = @message_ID
+
+		EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
+		EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
+		--EXEC external_GetInvoiceeXML @part_ID, @invoicee OUTPUT
+		EXEC external_GetDeliveryInfoXML @part_ID_Out, NULL, @part_ID_Self, @addr_ID, @strqt_DateInput, @deliveryInfo OUTPUT
+
+		DECLARE @senderGLN NVARCHAR(MAX), @buyerGLN NVARCHAR(MAX)
+		SET @senderGLN = @seller.value('(/seller/gln)[1]', 'NVARCHAR(MAX)')
+		SET @buyerGLN = @buyer.value('(/buyer/gln)[1]', 'NVARCHAR(MAX)')
+
+
+		SET @Result=
+			(SELECT
+				 messageId N'id'
+				,creationDateTime N'creationDateTime'
+				,(SELECT
 					@buyerGLN N'sender',
 					@senderGLN N'recipient',
 					'ORDERS' N'documentType'
 					,creationDateTime N'creationDateTime'
 					,creationDateTime N'creationDateTimeBySender'
 					,NULL 'IsTest'
-				FOR XML PATH(N'interchangeHeader'), TYPE
-			)
-			,(
-			    SELECT
-				--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
+				  FOR XML PATH(N'interchangeHeader'), TYPE)
+				,(SELECT
+					--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
 				   -- R.strqt_Name N'@number'
 				    R.strqt_Name N'@number'
 				   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, R.strqt_Date), 127) N'@date'
@@ -157,44 +157,48 @@ SET @Result=
 				   ,@deliveryInfo
 				   -- информация о товарах
 				   ,@lineItems
-
-				FOR XML PATH(N'order'), TYPE
+				  FOR XML PATH(N'order'), TYPE
 			)
-        FROM KonturEDI.dbo.edi_Messages M
-		JOIN StoreRequests              R ON R.strqt_ID = M.doc_ID
-		LEFT JOIN PartnerContracts      C ON C.pcntr_part_ID = R.strqt_part_ID_Out
-		WHERE M.messageId = @messageId
-		FOR XML RAW(N'eDIMessage')
-	)
+			FROM KonturEDI.dbo.edi_Messages M
+			JOIN StoreRequests              R ON R.strqt_ID = M.doc_ID
+			LEFT JOIN PartnerContracts      C ON C.pcntr_part_ID = R.strqt_part_ID_Out
+			WHERE M.messageId = @message_ID
+			FOR XML RAW(N'eDIMessage'))
 
-	DECLARE @File SYSNAME, @R NVARCHAR(MAX)
+		-- Запись в файл
+		SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
+		SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@message_ID AS NVARCHAR(MAX))+'.xml'
+		EXEC dbo.external_SaveToFile @File, @R
 
-	SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
-	SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@messageId AS NVARCHAR(MAX))+'.xml'
-	EXEC dbo.external_SaveToFile @File, @R
+		EXEC external_UpdateDocStatus @doc_ID, 'request', 'Отправлена' --, current_timestamp
+		-- Статус отправлен
+		UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @message_ID
+		-- Лог
+		INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID)
+		VALUES (@Result, 'Отправлена заявка поставщику', @message_ID, @doc_ID)
 
-	-- Статус отправлен
-	UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @messageId
-	-- Лог
-	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID)
-	VALUES (@Result, 'Отправлена заявка поставщику', @messageId, @doc_ID)
-
- 	IF @TRANCOUNT = 0
-  	    COMMIT TRAN
-END TRY
-BEGIN CATCH
-    -- Ошибка загрузки файла, пишем ошибку приема
-	IF @@TRANCOUNT > 0
-	    IF (XACT_STATE()) = -1
-	        ROLLBACK
-	    ELSE
-	        ROLLBACK TRAN external_ExportORDERS
-	IF @TRANCOUNT > @@TRANCOUNT
-	    BEGIN TRAN
+ 		IF @TRANCOUNT = 0
+  			COMMIT TRAN
+	END TRY
+	BEGIN CATCH
+		-- Ошибка загрузки файла, пишем ошибку приема
+		IF @@TRANCOUNT > 0
+			IF (XACT_STATE()) = -1
+				ROLLBACK
+			ELSE
+				ROLLBACK TRAN external_ExportORDERS
+		IF @TRANCOUNT > @@TRANCOUNT
+			BEGIN TRAN
 
 	    -- Ошибки в таблицу, обработаем потом
 		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
 	    SELECT 'ExportORDERS', ERROR_NUMBER(), ERROR_MESSAGE()
 	    -- EXEC tpsys_ReraiseError
-END CATCH
+	END CATCH
+
+    FETCH ct INTO @message_ID, @doc_ID
+END
+
+CLOSE ct
+DEALLOCATE ct
 

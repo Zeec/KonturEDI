@@ -90,14 +90,16 @@ WHERE strqt_strqtyp_ID = 12
 	AND strqt_ID NOT IN (SELECT doc_ID FROM KonturEDI.dbo.edi_Messages)
 
 -- Тут курсор
-DECLARE @messageId UNIQUEIDENTIFIER, @doc_ID UNIQUEIDENTIFIER
+/*DECLARE @messageId UNIQUEIDENTIFIER, @doc_ID UNIQUEIDENTIFIER
 
 SELECT TOP 1 @messageId = messageId, @doc_ID = doc_ID FROM KonturEDI.dbo.edi_Messages WHERE doc_Type = 'request' AND IsProcessed = 0
 
 IF @messageId IS NOT NULL BEGIN
   EXEC external_ExportORDERS @messageId, @doc_ID
   EXEC external_UpdateDocStatus @doc_ID, 'request', 'Отправлена' --, current_timestamp
-END
+END*/
+
+EXEC external_ExportORDERS -- @messageId, @doc_ID
 
 -- Необработанные приходы
 SET @messageId = NULL
