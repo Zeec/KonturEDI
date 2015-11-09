@@ -24,7 +24,7 @@ DECLARE
 
 --
 SELECT TOP 1 @nttp_ID_Status = nttp_ID_Status, @nttp_ID_Log = nttp_ID_Log 
-FROM KonturEDI.dbo.edi_Settings
+FROM #EDISettings
 --
 IF @doc_Type = 'request'
     SELECT @tpsyso_ID = tpsyso_ID
