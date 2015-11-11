@@ -21,8 +21,8 @@ DECLARE @t TABLE (fname NVARCHAR(255), d INT, f INT)
 DECLARE @fname NVARCHAR(255), @full_fname NVARCHAR(255),  @xml xml, @sql NVARCHAR(MAX), @cmd NVARCHAR(255), @r INT
 
 -- Настройки путей
-DECLARE @ReportsPath NVARCHAR(MAX)
-SELECT @ReportsPath = ReportsPath FROM #EDISettings
+DECLARE @ReportsPath NVARCHAR(255)
+SELECT @ReportsPath = ReportsPath FROM  KonturEDI.dbo.edi_Settings
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @ReportsPath, 1, 1
@@ -61,7 +61,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
       SELECT TOP 1 @messageId = messageId, @dateTime = dateTime, @description = description FROM #Messages
 	
       -- Внутренний ID документа в Тиллипад
-	  SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE messageId =  @messageId 
+	  SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE message_Id =  @messageId 
 	
 	  IF @doc_ID IS NOT NULL 
 	      EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @description, @dateTime
@@ -71,6 +71,11 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
 	  VALUES (@xml, 'Получено статусное сообщение', @messageId, @doc_ID)
 
+	  -- Удалим оригинальное сообщение
+	  IF @messageId IS NOT NULL BEGIN
+	      SELECT @cmd = 'DEL /f /q "'+ message_FileName +'"' FROM KonturEDI.dbo.edi_Messages WHERE message_Id =  @messageId 
+		  EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
+	  END
 	  -- Сообщение обработано, удаляем
       SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
       EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
@@ -89,9 +94,9 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	        BEGIN TRAN
 
 	    -- Ошибки в таблицу, обработаем потом
-		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+		INSERT INTO KonturEDI.dbo.edi_Errors (ProcedureName, ErrorNumber, ErrorMessage)
 	    SELECT 'ImportReports', ERROR_NUMBER(), ERROR_MESSAGE()
-	    -- EXEC tpsys_ReraiseError
+	     -- EXEC tpsys_ReraiseError
     END CATCH
   
     IF OBJECT_ID('tempdb..#Messages') IS NOT NULL DROP TABLE #Messages 

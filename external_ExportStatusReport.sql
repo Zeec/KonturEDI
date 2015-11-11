@@ -27,13 +27,13 @@ DECLARE @TRANCOUNT INT
 --DECLARE @messageId UNIQUEIDENTIFIER
 DECLARE @FileName SYSNAME, @Result_XML XML, @Result_Text NVARCHAR(MAX)
 
-SET @TRANCOUNT = @@TRANCOUNT
+/*SET @TRANCOUNT = @@TRANCOUNT
 IF @TRANCOUNT = 0
     BEGIN TRAN external_ExportStatusReport
 ELSE
     SAVE TRAN external_ExportStatusReport
 
-BEGIN TRY
+BEGIN TRY*/
     SET @Result_XML = (
 	    SELECT 
 		   GETDATE() N'reportDateTime'
@@ -63,7 +63,7 @@ BEGIN TRY
 	INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
 	VALUES (@Result_XML, 'Отправлено статусное сообщение '+@state, @message_ID, @doc_ID)
 
- 	IF @TRANCOUNT = 0 
+ /*	IF @TRANCOUNT = 0 
   	    COMMIT TRAN
 END TRY
 BEGIN CATCH
@@ -78,3 +78,4 @@ BEGIN CATCH
 
 	EXEC tpsys_ReraiseError
 END CATCH
+*/

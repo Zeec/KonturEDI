@@ -27,14 +27,14 @@ SELECT @nttp_ID_GLN = nttp_ID_GLN
 FROM #EDISettings
 
 SET @message_ID = NEWID()
-INSERT INTO KonturEDI.dbo.edi_Messages (messageID, doc_Name, doc_Date, doc_Type)
+INSERT INTO KonturEDI.dbo.edi_Messages (message_ID, doc_Name, doc_Date, doc_Type)
 VALUES (@message_ID, (SELECT ISNULL(MAX(CONVERT(INT, doc_Name)), 0)+1 FROM KonturEDI.dbo.edi_Messages WHERE doc_Type = 'partin'), GETDATE(), 'partin')
 
 DECLARE @Result NVARCHAR(MAX)
 SET @Result =
 (SELECT
-	 messageID N'id'
-    ,CONVERT(NVARCHAR(MAX), creationDateTime, 127) N'creationDateTime'
+	 message_ID N'id'
+    ,CONVERT(NVARCHAR(MAX), message_creationDateTime, 127) N'creationDateTime'
 	,(SELECT
          CONVERT(NVARCHAR(MAX), NS.note_Value) N'sender'
 		,CONVERT(NVARCHAR(MAX), NR.note_Value) N'recipient'
@@ -43,7 +43,7 @@ SET @Result =
 	  FOR XML PATH(N'interchangeHeader'), TYPE) 
     ,(SELECT 
 	     doc_Name N'@number' 
-		,CONVERT(NVARCHAR(MAX), CONVERT(DATE, creationDateTime), 127) N'@date'
+		,CONVERT(NVARCHAR(MAX), CONVERT(DATE, message_creationDateTime), 127) N'@date'
         ,(SELECT 
  	 	     CONVERT(NVARCHAR(MAX), NS.note_Value) N'gln' --gln покупателя
             ,dbo.f_MultiLanguageStringToStringByLanguage1(PS.part_Name, 25) N'organization/name' 
@@ -108,7 +108,7 @@ LEFT JOIN People         PA ON PA.pepl_ID = F.firm_pepl_ID_Accountant
 
 LEFT JOIN Partners       PR ON PR.part_ID = @part_ID_Recipient
 LEFT JOIN Notes          NR ON NR.note_obj_ID = PR.part_ID AND NR.note_nttp_ID = @nttp_ID_GLN
-WHERE M.messageId = @message_ID
+WHERE M.message_ID = @message_ID
 FOR XML RAW(N'eDIMessage'))	
 
 --------------------------------------------------------------------------------

@@ -26,19 +26,35 @@ DECLARE @message_ID UNIQUEIDENTIFIER
 DECLARE @doc_ID UNIQUEIDENTIFIER
 -- Единица измерения
 DECLARE @nttp_ID_Measure UNIQUEIDENTIFIER
-DECLARE @Measure_Default NVARCHAR(10) = 'PCE'
+DECLARE @Measure_Default NVARCHAR(10) 
+DECLARE @OutboxPath NVARCHAR(MAX)
+DECLARE @Currency_Default NVARCHAR(10)
 
-SELECT @nttp_ID_Measure = nttp_ID_Measure
-FROM #EDISettings
+SELECT @OutboxPath = OutboxPath, 
+    @nttp_ID_Measure = nttp_ID_Measure, 
+    @Measure_Default = Measure_Default, @Currency_Default = Currency_Default
+FROM KonturEDI.dbo.edi_Settings
+
+DECLARE 	
+    @doc_Name nvarchar(max),
+	@doc_Date datetime,
+	@doc_Type nvarchar(max)
 
 --бежим по списку
 DECLARE ct CURSOR FOR
-    SELECT TOP 1 messageId, doc_ID 
+    SELECT message_Id, doc_ID 
 	FROM KonturEDI.dbo.edi_Messages 
 	WHERE doc_Type = 'request' AND IsProcessed = 0
+	
+	/*SELECT nEWID(), strqt_ID, strqt_Name, strqt_Date, 'request'
+	FROM StoreRequests R 
+	LEFT JOIN KonturEDI.dbo.edi_Messages M ON doc_ID = strqt_ID
+	WHERE strqt_strqtyp_ID IN (11,12)
+		AND strqt_strqtst_ID = 12 
+		AND M.doc_ID IS NULL*/
 
 OPEN ct
-FETCH ct INTO @message_ID, @doc_ID
+FETCH ct INTO @message_ID, @doc_ID --, @doc_Name, @doc_Date, @doc_Type
 
 WHILE @@FETCH_STATUS = 0 BEGIN 
 
@@ -50,7 +66,8 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
     -- Формирование файлов-заказов ORDERS
     BEGIN TRY
-
+	    --INSERT INTO KonturEDI.dbo.edi_Messages (message_ID, doc_ID, doc_Name, doc_Date, doc_Type)
+		--VALUES(@message_ID, @doc_ID, @doc_Name, @doc_Date, @doc_Type)
 
 		-- Элементы заказа
 		SET @LineItem = 
@@ -81,12 +98,12 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		-- Единица измерения
 		LEFT JOIN Notes              NM ON NM.note_obj_ID = strqti_meit_ID AND note_nttp_ID = @nttp_ID_Measure
 		LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
-		WHERE M.messageId = @message_ID  --'AA215039-87FE-4EA6-B9B4-CAFE688864D1'
+		WHERE M.message_Id = @message_ID 
 		FOR XML PATH(N'lineItem'), TYPE)
 
 		SET @LineItems = 
 			(SELECT
-				 'RUB' N'currencyISOCode' --код валюты (по умолчанию рубли)
+				 @Currency_Default N'currencyISOCode' --код валюты (по умолчанию рубли)
 				,@LineItem
 				,SUM(strqti_Sum) N'totalSumExcludingTaxes' -- сумма заявки без НДС
 				,SUM(strqti_SumVAT) N'totalVATAmount' -- сумма НДС по заказу
@@ -94,7 +111,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			FROM KonturEDI.dbo.edi_Messages M
 			JOIN StoreRequests           R ON R.strqt_ID = M.doc_ID
 			JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
-			WHERE M.messageId = @message_ID
+			WHERE M.message_Id = @message_ID
 			FOR XML PATH(N'lineItems'), TYPE)
 
 		SELECT TOP 1
@@ -114,7 +131,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		-- LEFT JOIN tp_Partners SelfParnter ON SelfParnter.part_ID = stgr_part_ID
 		-- Адрес склада
 		LEFT JOIN Addresses               ON addr_obj_ID         = S.stor_loc_ID
-		WHERE M.messageId = @message_ID
+		WHERE M.message_Id = @message_ID
 
 		EXEC dbo.external_GetSellerXML @part_ID_Out, @seller OUTPUT
 		EXEC dbo.external_GetBuyerXML @part_ID_Self, @addr_ID, @buyer OUTPUT
@@ -128,19 +145,18 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 		SET @Result=
 			(SELECT
-				 messageId N'id'
-				,creationDateTime N'creationDateTime'
+				 message_Id N'id'
+				,CONVERT(NVARCHAR(MAX), message_creationDateTime, 127) N'creationDateTime'
 				,(SELECT
 					@buyerGLN N'sender',
 					@senderGLN N'recipient',
 					'ORDERS' N'documentType'
-					,creationDateTime N'creationDateTime'
-					,creationDateTime N'creationDateTimeBySender'
+					,CONVERT(NVARCHAR(MAX), message_creationDateTime, 127)  N'creationDateTime'
+					,CONVERT(NVARCHAR(MAX), message_creationDateTime, 127)  N'creationDateTimeBySender'
 					,NULL 'IsTest'
 				  FOR XML PATH(N'interchangeHeader'), TYPE)
 				,(SELECT
 					--номер документа-заказа, дата документа-заказа, статус документа - оригинальный/отменённый/копия/замена, номер исправления для заказа-замены
-				   -- R.strqt_Name N'@number'
 				    R.strqt_Name N'@number'
 				   ,CONVERT(NVARCHAR(MAX), CONVERT(DATE, R.strqt_Date), 127) N'@date'
 				   ,R.strqt_ID N'@id'
@@ -162,22 +178,23 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			FROM KonturEDI.dbo.edi_Messages M
 			JOIN StoreRequests              R ON R.strqt_ID = M.doc_ID
 			LEFT JOIN PartnerContracts      C ON C.pcntr_part_ID = R.strqt_part_ID_Out
-			WHERE M.messageId = @message_ID
+			WHERE M.message_Id = @message_ID
 			FOR XML RAW(N'eDIMessage'))
 
 		-- Запись в файл
 		SET @R = N'<?xml  version ="1.0"  encoding ="utf-8"?>'+@Result
-		SET @File = 'C:\kontur\Outbox\ORDERS_'+CAST(@message_ID AS NVARCHAR(MAX))+'.xml'
+		SET @File = @OutboxPath+'ORDERS_'+CAST(@message_ID AS NVARCHAR(MAX))+'.xml'
 		EXEC dbo.external_SaveToFile @File, @R
 
-		EXEC external_UpdateDocStatus @doc_ID, 'request', 'Отправлена' --, current_timestamp
 		-- Статус отправлен
-		UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1 WHERE messageId = @message_ID
+		UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1, message_FileName = @File WHERE message_Id = @message_ID
+		-- Дополнительный статус документа
+		EXEC external_UpdateDocStatus @doc_ID, 'request', 'Отправлена' --, current_timestamp
 		-- Лог
 		INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID)
 		VALUES (@Result, 'Отправлена заявка поставщику', @message_ID, @doc_ID)
 
- 		IF @TRANCOUNT = 0
+ 		IF @TRANCOUNT = 0                   
   			COMMIT TRAN
 	END TRY
 	BEGIN CATCH
@@ -191,12 +208,12 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			BEGIN TRAN
 
 	    -- Ошибки в таблицу, обработаем потом
-		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+		INSERT INTO KonturEDI.dbo.edi_Errors (ProcedureName, ErrorNumber, ErrorMessage)
 	    SELECT 'ExportORDERS', ERROR_NUMBER(), ERROR_MESSAGE()
 	    -- EXEC tpsys_ReraiseError
 	END CATCH
 
-    FETCH ct INTO @message_ID, @doc_ID
+    FETCH ct INTO @message_ID, @doc_ID --, @doc_Name, @doc_Date, @doc_Type
 END
 
 CLOSE ct

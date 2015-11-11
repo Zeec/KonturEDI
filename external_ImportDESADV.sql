@@ -21,6 +21,10 @@ DECLARE @TRANCOUNT INT
 
 DECLARE @Result_XML XML, @Result_Text NVARCHAR(MAX), @FileName SYSNAME
 DECLARE @despatchAdvice_number NVARCHAR(MAX), @despatchAdvice_date DATETIME
+		DECLARE 
+			@idoc_Name NVARCHAR(MAX)
+			,@idoc_Date DATETIME 
+
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @Path, 1, 1
@@ -70,7 +74,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  SELECT @despatchAdvice_number = msg_number, @despatchAdvice_date = msg_date FROM #Messages
 	  
 	  -- Меняем статус на "Подтверждена"
-	  SELECT @message_ID = M.messageID, @doc_ID = doc_ID, @doc_Type = doc_Type
+	  SELECT @message_ID = M.message_ID, @doc_ID = doc_ID, @doc_Type = doc_Type
 	  FROM #Messages T
 	  JOIN KonturEDI.dbo.edi_Messages M ON M.doc_Name = originOrder_number AND CONVERT(DATE, M.doc_Date) = CONVERT(DATE, originOrder_date)
 	  WHERE M.doc_Type = 'request'
@@ -80,9 +84,10 @@ WHILE @@FETCH_STATUS = 0 BEGIN
   	  VALUES (@xml, 'Получено уведомление об отгрузке', @message_ID, @doc_ID)
 
 	  -- Приходная накладная
-	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date 
-      -- Статус
-	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Создана приходная накладная'
+	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date, @idoc_Name OUTPUT, @idoc_Date OUTPUT
+	  SET @idoc_Name = 'Создана приходная накладная N'+@idoc_Name+' дата'+CONVERT(NVARCHAR(50), @idoc_Date, 104)
+	  -- Статус
+	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @idoc_Name
 	  
 	  EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\kontur\outbox\', @fname, 'Ok', 'Сообщение доставлено'
 	END
@@ -123,7 +128,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  BEGIN TRAN
 
 	    -- Ошибки в таблицу, обработаем потом
-		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+		INSERT INTO KonturEDI.dbo.edi_Errors (ProcedureName, ErrorNumber, ErrorMessage)
 	    SELECT 'ImportDESADV', ERROR_NUMBER(), ERROR_MESSAGE()
 	    -- EXEC tpsys_ReraiseError
     END CATCH
