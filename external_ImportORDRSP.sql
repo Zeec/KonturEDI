@@ -23,12 +23,16 @@ DECLARE @TRANCOUNT INT
 DECLARE @Result_XML XML, @Result_Text NVARCHAR(MAX), @FileName SYSNAME
 DECLARE @msg_status NVARCHAR(MAX)
 
+DECLARE @OutboxPath NVARCHAR(MAX), @InboxPath NVARCHAR(MAX)
+SELECT @OutboxPath = OutboxPath, @InboxPath = InboxPath FROM KonturEDI.dbo.edi_Settings
+
+
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @Path, 1, 1
 declare @external_ImportORDRSP NVARCHAR(MAX)
 -- идем по списку
 DECLARE ct CURSOR FOR
-  SELECT fname, @Path+'\'+fname AS full_fname FROM @t WHERE f=1 AND fname LIKE 'ORDRSP%'
+  SELECT fname, @InboxPath+'\'+fname AS full_fname FROM @t WHERE f=1 AND fname LIKE 'ORDRSP%'
 
 OPEN ct
 FETCH ct INTO @fname, @full_fname
@@ -82,7 +86,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
     -- Accepted/Rejected/Changed
 	IF @msg_status = 'Changed' BEGIN
 	    -- Изменение заказов не поддерживается учетной системой
-        EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Fail', 'При обработке сообщения произошла ошибка', 'Изменение заказов не поддерживается учетной системой'
+        EXEC external_ExportStatusReport @message_ID, @doc_ID, @OutboxPath, @fname, 'Fail', 'При обработке сообщения произошла ошибка', 'Изменение заказов не поддерживается учетной системой'
 	END
 	ELSE IF @msg_status = 'Rejected' BEGIN
  	  -- Поставить статус "заказ отменен"
@@ -90,7 +94,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
       
 	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Отвергнута'
 
-      EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
+      EXEC external_ExportStatusReport @message_ID, @doc_ID, @OutboxPath, @fname, 'Ok', 'Сообщение доставлено'
 	END
 	ELSE IF @msg_status = 'Accepted' BEGIN
 		-- Меняем статус на "Подтверждена"
@@ -98,7 +102,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 		EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Принята'
 
-		EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\Kontur\Outbox\', @fname, 'Ok', 'Сообщение доставлено'
+		EXEC external_ExportStatusReport @message_ID, @doc_ID, @OutboxPath, @fname, 'Ok', 'Сообщение доставлено'
 	END
 
 	    -- Сообщение обработано, удаляем
