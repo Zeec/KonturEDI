@@ -265,7 +265,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		-- Статус отправлен
 		UPDATE KonturEDI.dbo.edi_Messages SET IsProcessed = 1, message_FileName = @File WHERE message_Id = @message_ID
 		-- Дополнительный статус документа
-		EXEC external_UpdateDocStatus @doc_ID, 'input', 'Отправлена' --, current_timestamp
+		EXEC external_UpdateDocStatus @doc_ID, 'input', 'Отправлено сообщение' --, current_timestamp
 		-- Лог
 		INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID)
 		VALUES (@Result, 'Отправлено подтверждение прихода', @message_ID, @doc_ID)
