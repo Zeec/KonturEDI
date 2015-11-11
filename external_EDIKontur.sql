@@ -18,6 +18,13 @@ AS
 	3. Аутбокс
 */
 
+DECLARE @TRANCOUNT INT
+SET @TRANCOUNT = @@TRANCOUNT
+IF @TRANCOUNT > 0 COMMIT TRAN
+
+IF @TaskID IS NULL
+   EXEC tpsys_RaiseError 50001, 'Пустой TaskID'
+
 DECLARE @cmd VARCHAR(200)
 
 -- Ошибки 
@@ -91,15 +98,35 @@ DECLARE
 	 @ErrorNumber INT
     ,@ErrorMessage NVARCHAR(2047)
 
-SELECT TOP 1 @ErrorNumber = ErrorNumber, @ErrorMessage = ProcedureName+' '+ErrorMessage
-FROM KonturEDI.dbo.edi_Errors
+--SELECT TOP 1 @ErrorNumber = ErrorNumber, @ErrorMessage = ProcedureName+' '+ErrorMessage
+--FROM KonturEDI.dbo.edi_Errors
 
 --IF @ErrorNumber IS NOT NULL 
 --    EXEC tpsys_RaiseError @ErrorNumber, @ErrorMessage
 
-EXEC tpsrv_AddTaskLogError @TaskID, 5, @ErrorMessage, 0
+--------------------------------------------------------------------------------
+
+--SELECT ErrorNumber, ProcedureName+' '+ErrorMessage
+--FROM KonturEDI.dbo.edi_Errors
+
+DECLARE ct CURSOR FOR
+    SELECT ErrorNumber, ProcedureName+' '+ErrorMessage
+	FROM KonturEDI.dbo.edi_Errors
+
+OPEN ct
+FETCH ct INTO @ErrorNumber, @ErrorMessage
+
+WHILE @@FETCH_STATUS = 0 BEGIN 
+ 	EXEC tpsrv_AddTaskLogError @TaskID, 1, @ErrorMessage, 1
+    FETCH ct INTO @ErrorNumber, @ErrorMessage
+END
+
+CLOSE ct
+DEALLOCATE ct
 
 TRUNCATE TABLE KonturEDI.dbo.edi_Errors
+
+IF @TRANCOUNT > @@TRANCOUNT BEGIN TRAN
 
 --IF OBJECT_ID(N'tempdb..#EDIErrors') IS NOT NULL DROP TABLE #EDIErrors
 --IF OBJECT_ID(N'tempdb..#EDISettings') IS NOT NULL DROP TABLE #EDISettings

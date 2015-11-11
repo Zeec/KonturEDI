@@ -1,11 +1,35 @@
-
+--tpsrv_start
 EXEC tpsrv_logon 'sv', '1'
-EXEC external_EDIKontur
+BEGIN TRAN
+EXEC external_EDIKontur '152335FE-8572-BE44-882F-C005BB6FE82F'
+commit tran
+EXEC external_ImportORDRSP 'c:\Kontur\Inbox\'
 
+select * from KonturEDI.dbo.edi_Errors
 
-
-
-
+-- EXEC external_EDIKontur '152335FE-8572-BE44-882F-C005BB6FE82F'
+--EXEC external_PrepareORDERS
+select convert(datetimeoffset, '2015-11-11T08:49:29.911Z+3')
+select convert(datetimeoffset, GETDATE())
+select * from KonturEDI.dbo.edi_MessagesLog order by log_Date desc WHERE doc_ID ='1AAB28C7-314E-1645-B289-605B226C7CD7'
+select top 5 * from KonturEDI.dbo.edi_Messages order by message_creationDateTime desc
+--delete from KonturEDI.dbo.edi_Messages where doc_ID = 'C6E1C66B-A187-6046-AF21-AEFF44CFB677'
+SELECT strqt_ID, strqt_Name, strqt_Date, 'request'
+	FROM StoreRequests R 
+	LEFT JOIN KonturEDI.dbo.edi_Messages M ON doc_ID = strqt_ID
+	WHERE strqt_strqtyp_ID IN (11,12)
+		AND strqt_strqtst_ID = 12 
+		AND M.doc_ID IS NULL
+	ORDER BY strqt_Date DESC
+ 	
+	EXEC tpsrv_logon 'sv', '1'
+	update StoreRequests SET strqt_strqtst_ID = 13 WHERE strqt_ID = '1F079669-3EB9-9A4A-BA05-7C65AC3576D1'
+	
+	--select * from tp_Tasks
+--
+/*DECLARE @cmd VARCHAR(200)
+SET @cmd = 'C:\kontur\Actions\get_reports.cmd'
+EXEC master..xp_cmdshell @cmd*/
 
 
 
@@ -28,8 +52,8 @@ EXEC external_EDIKontur
 --select * from KonturEDI.dbo.edi_Messages  WHERE messageId ='5010A02A-BCD3-4BC6-9C9F-5FD320D5F7BD'
 
 /*UPDATE KonturEDI.dbo.edi_Messages 
-SET IsProcessed = 0
-where doc_ID = '21134842-0515-46DA-889C-A005D2503505'*/
+SET message_filename = 'C:\Kontur\Outbox\RECADV_1B2E573D-13E5-4C8B-931C-F65A5D8E1546.xml'
+where message_ID = '1B2E573D-13E5-4C8B-931C-F65A5D8E1546'*/
 
 --DECLARE @cmd VARCHAR(2000)
 --SET @cmd = 'C:\kontur\actions\get_reports.cmd'
