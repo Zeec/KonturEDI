@@ -172,6 +172,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 				   ,@invoicee
 				   ,@deliveryInfo
 				   -- информация о товарах
+				   ,CONVERT(NVARCHAR(MAX), R.strqt_Description) N'comment'
 				   ,@lineItems
 				  FOR XML PATH(N'order'), TYPE
 			)
