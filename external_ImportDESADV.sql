@@ -21,13 +21,20 @@ DECLARE @TRANCOUNT INT
 
 DECLARE @Result_XML XML, @Result_Text NVARCHAR(MAX), @FileName SYSNAME
 DECLARE @despatchAdvice_number NVARCHAR(MAX), @despatchAdvice_date DATETIME
+		DECLARE 
+			@idoc_Name NVARCHAR(MAX)
+			,@idoc_Date DATETIME 
+
+
+DECLARE @OutboxPath NVARCHAR(MAX), @InboxPath NVARCHAR(MAX)
+SELECT @OutboxPath = OutboxPath, @InboxPath = InboxPath FROM KonturEDI.dbo.edi_Settings
 
 -- получаем список файлов для закачки (заказы)
 INSERT INTO @t (fname, d, f) EXEC xp_dirtree @Path, 1, 1
 
 -- идем по списку
 DECLARE ct CURSOR FOR
-  SELECT fname, @Path+'\'+fname AS full_fname FROM @t WHERE f=1 AND fname LIKE 'DESADV%'
+  SELECT fname, @InboxPath+'\'+fname AS full_fname FROM @t WHERE f=1 AND fname LIKE 'DESADV%'
 
 OPEN ct
 FETCH ct INTO @fname, @full_fname
@@ -70,21 +77,27 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  SELECT @despatchAdvice_number = msg_number, @despatchAdvice_date = msg_date FROM #Messages
 	  
 	  -- Меняем статус на "Подтверждена"
-	  SELECT @message_ID = M.messageID, @doc_ID = doc_ID, @doc_Type = doc_Type
+	  SELECT @message_ID = M.message_ID, @doc_ID = doc_ID, @doc_Type = doc_Type
 	  FROM #Messages T
 	  JOIN KonturEDI.dbo.edi_Messages M ON M.doc_Name = originOrder_number AND CONVERT(DATE, M.doc_Date) = CONVERT(DATE, originOrder_date)
 	  WHERE M.doc_Type = 'request'
+
+		IF @doc_ID IS NULL BEGIN 
+			SELECT @Text = 'Не найден документ N'+originOrder_number+' от '+originOrder_date FROM #Messages
+			EXEC tpsys_RaiseError 50001, @Text
+		END
 
 	  -- Лог
 	  INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
   	  VALUES (@xml, 'Получено уведомление об отгрузке', @message_ID, @doc_ID)
 
 	  -- Приходная накладная
-	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date 
-      -- Статус
-	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Создана приходная накладная'
+	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date, @idoc_Name OUTPUT, @idoc_Date OUTPUT
+	  SET @idoc_Name = 'Создана приходная накладная N'+@idoc_Name+' дата'+CONVERT(NVARCHAR(50), @idoc_Date, 104)
+	  -- Статус
+	  EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @idoc_Name
 	  
-	  EXEC external_ExportStatusReport @message_ID, @doc_ID, 'C:\kontur\outbox\', @fname, 'Ok', 'Сообщение доставлено'
+	  EXEC external_ExportStatusReport @message_ID, @doc_ID, @OutboxPath, @fname, 'Ok', 'Сообщение доставлено'
 	END
 
     /*SELECT TOP 1 @messageId = messageId, @Text = dateTime + ' ' + description FROM #Messages
@@ -123,7 +136,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  BEGIN TRAN
 
 	    -- Ошибки в таблицу, обработаем потом
-		INSERT INTO #EDIErrors (ProcedureName, ErrorNumber, ErrorMessage)
+		INSERT INTO KonturEDI.dbo.edi_Errors (ProcedureName, ErrorNumber, ErrorMessage)
 	    SELECT 'ImportDESADV', ERROR_NUMBER(), ERROR_MESSAGE()
 	    -- EXEC tpsys_ReraiseError
     END CATCH

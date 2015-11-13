@@ -24,7 +24,7 @@ DECLARE
 
 --
 SELECT TOP 1 @nttp_ID_Status = nttp_ID_Status, @nttp_ID_Log = nttp_ID_Log 
-FROM #EDISettings
+FROM  KonturEDI.dbo.edi_Settings
 --
 IF @doc_Type = 'request'
     SELECT @tpsyso_ID = tpsyso_ID
@@ -34,6 +34,10 @@ IF @doc_Type = 'input'
     SELECT @tpsyso_ID = tpsyso_ID
     FROM sys_Objects
     WHERE tpsyso_Name LIKE '%Приходная накладная%'
+
+IF @tpsyso_ID IS NULL
+    EXEC tpsys_RaiseError 50001, 'tpsyso_ID IS NULL'
+ 
 --
 SELECT @note_ID = note_ID FROM Notes WHERE note_nttp_ID = @nttp_ID_Status AND note_obj_ID = @doc_ID
 --

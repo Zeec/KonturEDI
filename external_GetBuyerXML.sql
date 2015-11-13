@@ -69,7 +69,7 @@ DECLARE
     ,@ShowAdditionalInfo INT 
 
 SELECT @nttp_ID_GLN = nttp_ID_GLN, @ShowAdditionalInfo = ShowAdditionalInfo
-FROM #EDISettings
+FROM KonturEDI.dbo.edi_Settings
 
 SET @BuyerXML = 
 	(SELECT 

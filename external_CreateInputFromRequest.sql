@@ -9,24 +9,28 @@ IF OBJECT_ID(N'external_CreateInputFromRequest', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_CreateInputFromRequest (
-    @strqt_ID UNIQUEIDENTIFIER,
-	@name NVARCHAR(200),
-	@date DATETIME)
+     @strqt_ID UNIQUEIDENTIFIER
+	,@name NVARCHAR(200)
+	,@date DATETIME
+	,@idoc_Name NVARCHAR(MAX) OUTPUT
+    ,@idoc_Date DATETIME OUTPUT)
 AS
 
 DECLARE 
      @idoc_ID UNIQUEIDENTIFIER
-    ,@idoc_Name NVARCHAR(MAX)
-    ,@idoc_Date DATETIME
 	,@idoc_stor_ID UNIQUEIDENTIFIER
 	,@idoc_usr_ID UNIQUEIDENTIFIER
 
 DECLARE
-     @nttp_ID_idoc_name UNIQUEIDENTIFIER = 'EA463965-C7AE-144F-AACD-2DCF0D3A9695'
-    ,@nttp_ID_idoc_date UNIQUEIDENTIFIER = 'C8AC8FD2-77AF-3F48-B476-0255C9562FA7'
+     @nttp_ID_idoc_name UNIQUEIDENTIFIER 
+    ,@nttp_ID_idoc_date UNIQUEIDENTIFIER 
     ,@note_ID_idoc_name UNIQUEIDENTIFIER
     ,@note_ID_idoc_date UNIQUEIDENTIFIER
     ,@tpsyso_ID UNIQUEIDENTIFIER
+
+SELECT @nttp_ID_idoc_name = nttp_ID_idoc_name, @nttp_ID_idoc_date = nttp_ID_idoc_date
+FROM  KonturEDI.dbo.edi_Settings
+
 
 SELECT @idoc_ID = NEWID(),  @idoc_Date = GETDATE(), @idoc_stor_ID = strqt_stor_ID_In, @idoc_usr_ID = strqt_usr_ID
 FROM StoreRequests
@@ -54,7 +58,7 @@ CREATE TABLE #StoreRequestItemInputDocumentItems (
 	sriidi_idit_ID UNIQUEIDENTIFIER,
 	sriidi_Volume NUMERIC(18, 6))
 
-DECLARE @TRANCOUNT INT
+/*DECLARE @TRANCOUNT INT
 
 
 
@@ -65,7 +69,7 @@ DECLARE @TRANCOUNT INT
 	  SAVE TRAN external_CreateInputFromRequest
 
 -- Формирование файлов-заказов ORDERS
-BEGIN TRY
+BEGIN TRY*/
 
 INSERT INTO #StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
 SELECT NEWID(), strqti_ID, NEWID(), strqti_Volume
@@ -74,7 +78,7 @@ WHERE strqti_strqt_ID = @strqt_ID
 
 -- Приход
 INSERT INTO InputDocuments (idoc_ID, idoc_stor_ID, idoc_part_ID, idoc_usr_ID, idoc_idst_ID, idoc_sens_ID, idoc_Date, idoc_Name, idoc_ExternalName, idoc_Description)
-SELECT @idoc_ID, strqt_stor_ID_In, strqt_part_ID_Out, strqt_usr_ID, 0, 0,  GETDATE(), @idoc_Name, NULL, 'Автоматически создано'
+SELECT @idoc_ID, strqt_stor_ID_In, strqt_part_ID_Out, strqt_usr_ID, 0, 0,  GETDATE(), @idoc_Name, @name, 'Автоматически создано'
 FROM StoreRequests
 WHERE strqt_ID = @strqt_ID
 
@@ -92,6 +96,11 @@ JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_strqti_ID
 INSERT INTO StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
 SELECT sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume
 FROM #StoreRequestItemInputDocumentItems
+
+UPDATE I
+SET I.strqti_strqtist_ID = 1
+FROM #StoreRequestItemInputDocumentItems T
+JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_strqti_ID
 
 -- Заметки
 SELECT @tpsyso_ID = tpsyso_ID
@@ -121,7 +130,7 @@ ELSE
 -- Сообщение
 INSERT INTO KonturEDI.dbo.edi_Messages (doc_ID, doc_Name, doc_Date, doc_Type, doc_ID_original)
 SELECT @idoc_ID, @idoc_Name, @idoc_Date, 'input', @strqt_ID
-
+/*
  	IF @TRANCOUNT = 0 
   	    COMMIT TRAN
 END TRY
@@ -137,3 +146,4 @@ BEGIN CATCH
 
 	EXEC tpsys_ReraiseError
 END CATCH
+*/
