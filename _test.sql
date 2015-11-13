@@ -1,5 +1,11 @@
 --tpsrv_start
 EXEC tpsrv_logon 'sv', '1'
+--BEGIN TRAN
+EXEC external_ImportORDRSP 
+--commit tran
+SELECT * FROM KonturEDI.dbo.edi_Errors
+return
+
 BEGIN TRAN
 EXEC external_EDIKontur '152335FE-8572-BE44-882F-C005BB6FE82F'
 commit tran
@@ -11,7 +17,7 @@ select * from KonturEDI.dbo.edi_Errors
 --EXEC external_PrepareORDERS
 select convert(datetimeoffset, '2015-11-11T08:49:29.911Z+3')
 select convert(datetimeoffset, GETDATE())
-select * from KonturEDI.dbo.edi_MessagesLog order by log_Date desc WHERE doc_ID ='1AAB28C7-314E-1645-B289-605B226C7CD7'
+select * from KonturEDI.dbo.edi_MessagesLog order by log_Date desc --WHERE doc_ID ='1AAB28C7-314E-1645-B289-605B226C7CD7'
 select top 5 * from KonturEDI.dbo.edi_Messages order by message_creationDateTime desc
 --delete from KonturEDI.dbo.edi_Messages where doc_ID = 'C6E1C66B-A187-6046-AF21-AEFF44CFB677'
 SELECT strqt_ID, strqt_Name, strqt_Date, 'request'
