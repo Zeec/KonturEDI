@@ -88,7 +88,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
 			,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
 			--,NULL N'exciseDuty' --акциз товара
-			,I.strqti_VAT*100 N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+			,ISNULL(FLOOR(I.strqti_VAT*100), 'NOT_APPLICABLE') N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
 			,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
 			,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
 		FROM KonturEDI.dbo.edi_Messages M
