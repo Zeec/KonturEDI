@@ -9,7 +9,7 @@ IF OBJECT_ID('external_ImportDESADV', 'P') IS NOT NULL
 GO
 
 CREATE PROCEDURE dbo.external_ImportDESADV (
-  @Path NVARCHAR(255))
+  @Path NVARCHAR(255) = NULL)
 WITH EXECUTE AS OWNER
 AS
 -- DESADV (УВЕДОМЛЕНИЕ ОБ ОТГРУЗКЕ)
@@ -26,11 +26,11 @@ DECLARE @despatchAdvice_number NVARCHAR(MAX), @despatchAdvice_date DATETIME
 			,@idoc_Date DATETIME 
 
 
-DECLARE @OutboxPath NVARCHAR(MAX), @InboxPath NVARCHAR(MAX)
+DECLARE @OutboxPath NVARCHAR(255), @InboxPath NVARCHAR(255)
 SELECT @OutboxPath = OutboxPath, @InboxPath = InboxPath FROM KonturEDI.dbo.edi_Settings
 
 -- получаем список файлов для закачки (заказы)
-INSERT INTO @t (fname, d, f) EXEC xp_dirtree @Path, 1, 1
+INSERT INTO @t (fname, d, f) EXEC xp_dirtree @InboxPath, 1, 1
 
 -- идем по списку
 DECLARE ct CURSOR FOR
