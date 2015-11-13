@@ -106,8 +106,8 @@ DECLARE
 
 --------------------------------------------------------------------------------
 
---SELECT ErrorNumber, ProcedureName+' '+ErrorMessage
---FROM KonturEDI.dbo.edi_Errors
+SELECT ErrorNumber, ProcedureName+' '+ErrorMessage
+FROM KonturEDI.dbo.edi_Errors
 
 DECLARE ct CURSOR FOR
     SELECT ErrorNumber, ProcedureName+' '+ErrorMessage
