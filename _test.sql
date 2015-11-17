@@ -1,3 +1,4 @@
+return--
 --tpsrv_start
 EXEC tpsrv_logon 'sv', '1'
 --BEGIN TRAN

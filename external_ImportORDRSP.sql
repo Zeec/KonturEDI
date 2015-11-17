@@ -150,7 +150,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		INTO #MessageItems
 		FROM @xml.nodes('/eDIMessage/orderResponse/lineItems/lineItem') t(n)
 
-SELECT * FROM #MessageItems	
+		SELECT * FROM #MessageItems	
 
 		-- Новая заявка
 		DECLARE @strqt_ID UNIQUEIDENTIFIER = NEWID()
@@ -159,70 +159,47 @@ SELECT * FROM #MessageItems
 	    SELECT @strqt_ID, strqt_strqtyp_ID, strqt_stor_ID_In, strqt_stor_ID_Out, strqt_part_ID_Out, strqt_usr_ID, strqt_strqtst_ID, strqt_DateInput, strqt_DateLimit, strqt_Date, @doc_Name, strqt_Description 
 		FROM StoreRequests WHERE strqt_ID = @doc_ID
 	
-		SELECT NEWID()
-           ,strqti_strqt_ID
-           ,strqti_pitm_ID
-           ,strqti_meit_ID
-           ,CASE WHEN status = 'Rejected' THEN 2 ELSE 0 END 'strqti_strqtist_ID'
-           ,strqti_IdentifierCode
-           ,strqti_ItemName
-           ,strqti_Article
-           ,strqti_idtp_ID
-           ,strqti_Remains
-           ,strqti_ConsumptionPerDay
-           ,strqti_Volume
-           ,strqti_Price
-           ,strqti_Sum
-           ,strqti_VAT
-           ,strqti_SumVAT
-           ,strqti_EditIndex
-           ,strqti_Comment
-           ,strqti_Order
-		FROM #MessageItems
-		JOIN StoreRequestItems ON CONVERT(NVARCHAR(MAX),strqti_pitm_ID) = internalBuyerCode
-        WHERE strqti_strqt_ID = @doc_ID
+        -- WHERE 
 		-- Позиции заявки
-		INSERT INTO StoreRequestItems (strqti_ID
-           ,strqti_strqt_ID
-           ,strqti_pitm_ID
-           ,strqti_meit_ID
-           ,strqti_strqtist_ID
-           ,strqti_IdentifierCode
-           ,strqti_ItemName
-           ,strqti_Article
-           ,strqti_idtp_ID
-           ,strqti_Remains
-           ,strqti_ConsumptionPerDay
-           ,strqti_Volume
-           ,strqti_Price
-           ,strqti_Sum
-           ,strqti_VAT
-           ,strqti_SumVAT
-           ,strqti_EditIndex
-           ,strqti_Comment
-           ,strqti_Order)
-		SELECT NEWID()
-           ,@strqt_ID
-           ,strqti_pitm_ID
-           ,strqti_meit_ID
-           ,CASE WHEN status = 'Rejected' THEN 2 ELSE 0 END 'strqti_strqtist_ID'
-           ,strqti_IdentifierCode
-           ,strqti_ItemName
-           ,strqti_Article
-           ,strqti_idtp_ID
-           ,strqti_Remains
-           ,strqti_ConsumptionPerDay
-           ,strqti_Volume
-           ,strqti_Price
-           ,strqti_Sum
-           ,strqti_VAT
-           ,strqti_SumVAT
-           ,strqti_EditIndex
-           ,strqti_Comment
-           ,strqti_Order
+		INSERT INTO StoreRequestItems (strqti_ID,strqti_strqt_ID,strqti_pitm_ID,strqti_meit_ID,strqti_strqtist_ID,strqti_IdentifierCode,strqti_ItemName,strqti_Article,strqti_idtp_ID,strqti_Remains,strqti_ConsumptionPerDay,strqti_Volume,strqti_Price,strqti_Sum,strqti_VAT,strqti_SumVAT,strqti_EditIndex,strqti_Comment,strqti_Order)
+		SELECT NEWID(),@strqt_ID,strqti_pitm_ID,strqti_meit_ID,CASE WHEN status = 'Rejected' THEN 2 ELSE 0 END 'strqti_strqtist_ID',strqti_IdentifierCode,strqti_ItemName,strqti_Article,strqti_idtp_ID,strqti_Remains,strqti_ConsumptionPerDay,strqti_Volume,strqti_Price,strqti_Sum,strqti_VAT,strqti_SumVAT,strqti_EditIndex,strqti_Comment,strqti_Order
 		FROM #MessageItems
-		JOIN StoreRequestItems ON CONVERT(NVARCHAR(MAX),strqti_pitm_ID) = internalBuyerCode
-        WHERE strqti_strqt_ID = @doc_ID
+		-- связка по GTIN
+		JOIN tp_StoreRequestItems ON strqti_idtp_ID = @tralala AND strqti_IdentifierCode = gtin 
+
+		DECLARE ci CURSOR FOR
+			SELECT [status],[gtin],[internalBuyerCode],[internalSupplierCode],[serialNumber],[orderLineNumber],[typeOfUnit],[description],[comment],[orderedQuantity],[orderedQuantity_unitOfMeasure],[confirmedQuantity],[confirmedQuantity_unitOfMeasure],[onePlaceQuantity],[onePlaceQuantity_unitOfMeasure],[expireDate],[manufactoringDate],[netPrice],[netPriceWithVAT],[netAmount],[exciseDuty],[vATRate],[vATAmount],[amount]
+			FROM #MessageItems
+		OPEN ci
+		FETCH ci INTO @message_ID, @doc_ID --, @doc_Name, @doc_Date, @doc_Type
+
+		WHILE @@FETCH_STATUS = 0 BEGIN 
+
+			FETCH ci INTO @message_ID, @doc_ID --, @doc_Name, @doc_Date, @doc_Type
+		END
+
+		CLOSE ci
+		DEALLOCATE ci
+
+/*		BEGIN
+			-- Нет позиции оригинальной заявки, нужно создать новую на основе пришедших данных (наверно и такое может случится)
+			IF @strqti_ID IS NULL BEGIN
+			    -- Ищем 
+				SELECT parpit_pitm_ID
+				FROM tp_PartnerProductItems 
+				JOIN tp_PartnerProductItemIdentifiers ON parpidnt_parpit_ID = parpit_ID AND parpidnt_idtp_ID = @tralala
+				WHERE parpidnt_Code = @gtin AND parpit_part_ID = @blablabla
+
+				INSERT 
+			END
+			--
+			--
+		END
+*/
+		-- FULL JOIN (SELECT * FROM StoreRequestItems WHERE strqti_strqt_ID = @doc_ID) A ON CONVERT(NVARCHAR(MAX),strqti_pitm_ID) = internalBuyerCode 
+		-- JOIN StoreRequestItems ON CONVERT(NVARCHAR(MAX),strqti_pitm_ID) = internalBuyerCode
+        -- WHERE strqti_strqt_ID = @doc_ID
+
 		-- Изменение заказов не поддерживается учетной системой
         -- EXEC external_ExportStatusReport @message_ID, @doc_ID, @OutboxPath, @fname, 'Fail', 'При обработке сообщения произошла ошибка', 'Изменение заказов не поддерживается учетной системой'
 	END
@@ -244,8 +221,8 @@ SELECT * FROM #MessageItems
 	END
 
 	    -- Сообщение обработано, удаляем
-        --SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
-        EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
+        SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
+        -- EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
 
  	    IF @TRANCOUNT = 0 
   	        COMMIT TRAN 

@@ -1,7 +1,7 @@
 rem EDIKontur
 
-set server_name=nb-spb-tpad03
-set database_name=DBZee_9_5_0
+set server_name=ws-spb-tpad08
+set database_name=DBZee_9_5_1
 set user_name=sa
 set user_password=sasa
 

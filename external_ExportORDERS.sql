@@ -26,19 +26,23 @@ DECLARE @message_ID UNIQUEIDENTIFIER
 DECLARE @doc_ID UNIQUEIDENTIFIER
 -- Единица измерения
 DECLARE @nttp_ID_Measure UNIQUEIDENTIFIER
+DECLARE @idtp_ID_GTIN UNIQUEIDENTIFIER
 DECLARE @Measure_Default NVARCHAR(10) 
 DECLARE @OutboxPath NVARCHAR(MAX)
 DECLARE @Currency_Default NVARCHAR(10)
 
-SELECT @OutboxPath = OutboxPath, 
-    @nttp_ID_Measure = nttp_ID_Measure, 
-    @Measure_Default = Measure_Default, @Currency_Default = Currency_Default
+SELECT 
+     @OutboxPath = OutboxPath
+	,@nttp_ID_Measure = nttp_ID_Measure
+	,@Measure_Default = Measure_Default
+	,@Currency_Default = Currency_Default
+	,@idtp_ID_GTIN = idtp_ID_GTIN
 FROM KonturEDI.dbo.edi_Settings
 
-DECLARE 	
-    @doc_Name nvarchar(max),
-	@doc_Date datetime,
-	@doc_Type nvarchar(max)
+DECLARE 
+     @doc_Name NVARCHAR(max)
+	,@doc_Date DATETIME
+	,@doc_Type NVARCHAR(max)
 
 --бежим по списку
 DECLARE ct CURSOR FOR
@@ -72,7 +76,11 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		-- Элементы заказа
 		SET @LineItem = 
 		(SELECT
-			 CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
+			 CASE
+			     WHEN strqti_idtp_ID = @idtp_ID_GTIN THEN strqti_IdentifierCode
+				 ELSE ''
+			 END 'gtin'
+			 -- CONVERT(NVARCHAR(MAX), N.note_Value) N'gtin' -- GTIN товара
 			,P.pitm_ID N'internalBuyerCode' --внутренний код присвоенный покупателем
 			,I.strqti_Article N'internalSupplierCode' --артикул товара (код товара присвоенный продавцом)
 			,I.strqti_Order N'lineNumber' --порядковый номер товара
@@ -83,12 +91,12 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
 			,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
 			,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
-		--	,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
+			,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
 			,I.strqti_Price N'netPrice' --цена товара без НДС
 			,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
 			,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
-			--,NULL N'exciseDuty' --акциз товара
-			,ISNULL(FLOOR(I.strqti_VAT*100), 'NOT_APPLICABLE') N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+			,NULL N'exciseDuty' --акциз товара
+			,ISNULL(CONVERT(NVARCHAR(MAX), FLOOR(I.strqti_VAT*100)), 'NOT_APPLICABLE') N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
 			,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
 			,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
 		FROM KonturEDI.dbo.edi_Messages M
@@ -97,7 +105,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		JOIN MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
 		-- Единица измерения
 		LEFT JOIN Notes              NM ON NM.note_obj_ID = strqti_meit_ID AND note_nttp_ID = @nttp_ID_Measure
-		LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
+		-- LEFT JOIN Notes               N ON N.note_obj_ID = P.pitm_ID
 		WHERE M.message_Id = @message_ID 
 		FOR XML PATH(N'lineItem'), TYPE)
 
