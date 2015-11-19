@@ -88,16 +88,16 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			,dbo.f_MultiLanguageStringToStringByLanguage1(ISNULL(I.strqti_ItemName, P.pitm_Name), 25) N'description' --название товара
 			,dbo.f_MultiLanguageStringToStringByLanguage1(I.strqti_Comment, 25) N'comment' --комментарий к товарной позиции
 			,ISNULL(CONVERT(NVARCHAR(MAX), NM.note_Value), @Measure_Default) N'requestedQuantity/@unitOfMeasure' -- MeasurementUnitCode
-			,I.strqti_Volume N'requestedQuantity/text()' --заказанное количество
+			,I.strqti_Volume/MI.meit_Rate N'requestedQuantity/text()' --заказанное количество
 			,NULL N'onePlaceQuantity/@unitOfMeasure' -- MeasurementUnitCode
 			,NULL N'onePlaceQuantity/text()' -- количество в одном месте (чему д.б. кратно общее кол-во)
 			,'Direct' N'flowType' --Тип поставки, может принимать значения: Stock - сток до РЦ, Transit - транзит в магазин, Direct - прямая поставка, Fresh - свежие продукты
-			,I.strqti_Price N'netPrice' --цена товара без НДС
-			,I.strqti_Price+I.strqti_Price*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
+			,I.strqti_Price*MI.meit_Rate N'netPrice' --цена товара без НДС
+			,I.strqti_Price*MI.meit_Rate+I.strqti_Price*MI.meit_Rate*I.strqti_VAT N'netPriceWithVAT' --цена товара с НДС
 			,I.strqti_Sum N'netAmount' --сумма по позиции без НДС
 			,NULL N'exciseDuty' --акциз товара
-			,ISNULL(CONVERT(NVARCHAR(MAX), FLOOR(I.strqti_VAT*100)), 'NOT_APPLICABLE') N'VATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
-			,I.strqti_SumVAT N'VATAmount' --сумма НДС по позиции
+			,ISNULL(CONVERT(NVARCHAR(MAX), FLOOR(I.strqti_VAT*100)), 'NOT_APPLICABLE') N'vATRate' --ставка НДС (NOT_APPLICABLE - без НДС, 0 - 0%, 10 - 10%, 18 - 18%)
+			,I.strqti_SumVAT N'vATAmount' --сумма НДС по позиции
 			,I.strqti_Sum+I.strqti_SumVAT N'amount' --сумма по позиции с НДС
 		FROM KonturEDI.dbo.edi_Messages M
 		JOIN StoreRequestItems       I ON I.strqti_strqt_ID = M.doc_ID
