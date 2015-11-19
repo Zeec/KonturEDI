@@ -23,8 +23,8 @@ DECLARE @TRANCOUNT INT
 DECLARE @Result_XML XML, @Result_Text NVARCHAR(MAX), @FileName SYSNAME
 DECLARE @msg_status NVARCHAR(MAX)
 
-DECLARE @OutboxPath NVARCHAR(255), @InboxPath NVARCHAR(255)
-SELECT @OutboxPath = OutboxPath, @InboxPath = InboxPath FROM KonturEDI.dbo.edi_Settings
+DECLARE @OutboxPath NVARCHAR(255), @InboxPath NVARCHAR(255), @idtp_ID_GTIN UNIQUEIDENTIFIER
+SELECT @OutboxPath = OutboxPath, @InboxPath = InboxPath, @idtp_ID_GTIN = idtp_ID_GTIN FROM KonturEDI.dbo.edi_Settings
 
 
 -- получаем список файлов для закачки (заказы)
@@ -86,10 +86,21 @@ WHILE @@FETCH_STATUS = 0 BEGIN
     -- Accepted/Rejected/Changed
 	IF @msg_status = 'Changed' BEGIN
 		-- Поставить статус "Не готова" у оринальной заявки
+		DECLARE
+			 @strqt_Name NVARCHAR(MAX)
+			,@strqt_Date DATETIME
+		
+		SELECT @strqt_Name = strqt_Name, @strqt_Date = strqt_Date FROM StoreRequests WHERE strqt_ID = @doc_ID
+		SET @strqt_Name = @strqt_Name+'_'+REPLACE(REPLACE(REPLACE(CONVERT(VARCHAR, GETDATE(), 120), ':', ''), '-', ''), ' ', '')
+		
 		UPDATE StoreRequests 
 		SET  strqt_strqtst_ID = 10
-			,strqt_Name = strqt_Name+'_'+REPLACE(CONVERT(NVARCHAR(MAX), GETDATE(), 108), ':', '')
+			,strqt_Name = @strqt_Name
 		WHERE strqt_ID = @doc_ID
+
+		UPDATE KonturEDI.dbo.edi_Messages 
+		SET doc_Name = @strqt_Name  
+		WHERE doc_ID = @doc_ID
 
 		-- Обновляем дополнительный статус
 		EXEC external_UpdateDocStatus @doc_ID, @doc_Type, 'Пришли изменения от поставщика'
@@ -116,13 +127,13 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			,n.value('onePlaceQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'onePlaceQuantity_unitOfMeasure'
 			,n.value('expireDate[1]', 'NVARCHAR(MAX)') AS 'expireDate'
 			,n.value('manufactoringDate[1]', 'NVARCHAR(MAX)') AS 'manufactoringDate'
-			,n.value('netPrice[1]', 'NVARCHAR(MAX)') AS 'netPrice'
-			,n.value('netPriceWithVAT[1]', 'NVARCHAR(MAX)') AS 'netPriceWithVAT'
-			,n.value('netAmount[1]', 'NVARCHAR(MAX)') AS 'netAmount'
-			,n.value('exciseDuty[1]', 'NVARCHAR(MAX)') AS 'exciseDuty'
-			,n.value('vATRate[1]', 'NVARCHAR(MAX)') AS 'vATRate'
-			,n.value('vATAmount[1]', 'NVARCHAR(MAX)') AS 'vATAmount'
-			,n.value('amount[1]', 'NVARCHAR(MAX)') AS 'amount'
+			,n.value('netPrice[1]', 'NUMERIC(18, 6)') AS 'netPrice'
+			,n.value('netPriceWithVAT[1]', 'NUMERIC(18, 6)') AS 'netPriceWithVAT'
+			,n.value('netAmount[1]', 'NUMERIC(18, 6)') AS 'netAmount'
+			,n.value('exciseDuty[1]', 'NUMERIC(18, 6)') AS 'exciseDuty'
+			,n.value('vATRate[1]', 'NUMERIC(18, 6)') AS 'vATRate'
+			,n.value('vATAmount[1]', 'NUMERIC(18, 6)') AS 'vATAmount'
+			,n.value('amount[1]', 'NUMERIC(18, 6)') AS 'amount'
   /*      <gtin>GTIN</gtin>   <-->
         <internalBuyerCode>BuyerProductId</internalBuyerCode>   <!--внутренний код присвоенный покупателем-->
         <internalSupplierCode>SupplierProductId</internalSupplierCode>  <!--артикул товара (код товара присвоенный продавцом)-->
@@ -150,36 +161,169 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 		INTO #MessageItems
 		FROM @xml.nodes('/eDIMessage/orderResponse/lineItems/lineItem') t(n)
 
-		SELECT * FROM #MessageItems	
+		-- SELECT * FROM #MessageItems	
 
 		-- Новая заявка
 		DECLARE @strqt_ID UNIQUEIDENTIFIER = NEWID()
+		-- Позиции заявки
+		DECLARE
+			 @strqti_ID uniqueidentifier
+			,@strqti_ID_orig uniqueidentifier
+			-- ,@strqti_strqt_ID uniqueidentifier
+			,@strqti_pitm_ID uniqueidentifier
+			,@strqti_meit_ID uniqueidentifier
+			,@strqti_strqtist_ID int
+			,@strqti_IdentifierCode nvarchar(max) 
+			,@strqti_ItemName nvarchar(max) 
+			,@strqti_Article nvarchar(max) 
+			,@strqti_idtp_ID uniqueidentifier 
+			,@strqti_Remains numeric(18, 6) 
+			,@strqti_ConsumptionPerDay numeric(18, 6) 
+			,@strqti_Volume NUMERIC(18, 6)
+			,@strqti_Price numeric(30, 10) 
+			,@strqti_Sum numeric(18, 4) 
+			,@strqti_VAT numeric(18, 3) 
+			,@strqti_SumVAT numeric(18, 4) 
+			,@strqti_EditIndex int 
+			,@strqti_Comment nvarchar(max) 
+			,@strqti_Order int 
+			,@meit_Rate numeric(18, 6)
+		DECLARE
+			 @status NVARCHAR(MAX)
+			,@gtin NVARCHAR(MAX)
+			,@internalBuyerCode NVARCHAR(MAX)
+			,@internalSupplierCode NVARCHAR(MAX)
+			,@serialNumber NVARCHAR(MAX)
+			,@orderLineNumber NVARCHAR(MAX)
+			,@typeOfUnit NVARCHAR(MAX)
+			,@description NVARCHAR(MAX)
+			,@comment NVARCHAR(MAX)
+			,@orderedQuantity NVARCHAR(MAX)
+			,@orderedQuantity_unitOfMeasure NVARCHAR(MAX)
+			,@confirmedQuantity NVARCHAR(MAX)
+			,@confirmedQuantity_unitOfMeasure NVARCHAR(MAX)
+			,@onePlaceQuantity NVARCHAR(MAX)
+			,@onePlaceQuantity_unitOfMeasure NVARCHAR(MAX)
+			,@expireDate NVARCHAR(MAX)
+			,@manufactoringDate NVARCHAR(MAX)
+			,@netPrice NVARCHAR(MAX)
+			,@netPriceWithVAT NVARCHAR(MAX)
+			,@netAmount NVARCHAR(MAX)
+			,@exciseDuty NVARCHAR(MAX)
+			,@vATRate NVARCHAR(MAX)
+			,@vATAmount NVARCHAR(MAX)
+			,@amount  NVARCHAR(MAX)
 		
 		INSERT INTO StoreRequests (strqt_ID,strqt_strqtyp_ID,strqt_stor_ID_In,strqt_stor_ID_Out,strqt_part_ID_Out,strqt_usr_ID,strqt_strqtst_ID,strqt_DateInput,strqt_DateLimit,strqt_Date,strqt_Name,strqt_Description)
 	    SELECT @strqt_ID, strqt_strqtyp_ID, strqt_stor_ID_In, strqt_stor_ID_Out, strqt_part_ID_Out, strqt_usr_ID, strqt_strqtst_ID, strqt_DateInput, strqt_DateLimit, strqt_Date, @doc_Name, strqt_Description 
 		FROM StoreRequests WHERE strqt_ID = @doc_ID
-	
-        -- WHERE 
+
+		DECLARE @tmp NVARCHAR(MAX) =  'Создана на основе заявки N '+@strqt_Name
+		EXEC external_UpdateDocStatus @strqt_ID, @doc_Type, @tmp
+        
+		-- WHERE 
 		-- Позиции заявки
-		INSERT INTO StoreRequestItems (strqti_ID,strqti_strqt_ID,strqti_pitm_ID,strqti_meit_ID,strqti_strqtist_ID,strqti_IdentifierCode,strqti_ItemName,strqti_Article,strqti_idtp_ID,strqti_Remains,strqti_ConsumptionPerDay,strqti_Volume,strqti_Price,strqti_Sum,strqti_VAT,strqti_SumVAT,strqti_EditIndex,strqti_Comment,strqti_Order)
+		/*INSERT INTO StoreRequestItems (strqti_ID,strqti_strqt_ID,strqti_pitm_ID,strqti_meit_ID,strqti_strqtist_ID,strqti_IdentifierCode,strqti_ItemName,strqti_Article,strqti_idtp_ID,strqti_Remains,strqti_ConsumptionPerDay,strqti_Volume,strqti_Price,strqti_Sum,strqti_VAT,strqti_SumVAT,strqti_EditIndex,strqti_Comment,strqti_Order)
 		SELECT NEWID(),@strqt_ID,strqti_pitm_ID,strqti_meit_ID,CASE WHEN status = 'Rejected' THEN 2 ELSE 0 END 'strqti_strqtist_ID',strqti_IdentifierCode,strqti_ItemName,strqti_Article,strqti_idtp_ID,strqti_Remains,strqti_ConsumptionPerDay,strqti_Volume,strqti_Price,strqti_Sum,strqti_VAT,strqti_SumVAT,strqti_EditIndex,strqti_Comment,strqti_Order
 		FROM #MessageItems
 		-- связка по GTIN
 		JOIN tp_StoreRequestItems ON strqti_idtp_ID = @tralala AND strqti_IdentifierCode = gtin 
+		*/
 
 		DECLARE ci CURSOR FOR
-			SELECT [status],[gtin],[internalBuyerCode],[internalSupplierCode],[serialNumber],[orderLineNumber],[typeOfUnit],[description],[comment],[orderedQuantity],[orderedQuantity_unitOfMeasure],[confirmedQuantity],[confirmedQuantity_unitOfMeasure],[onePlaceQuantity],[onePlaceQuantity_unitOfMeasure],[expireDate],[manufactoringDate],[netPrice],[netPriceWithVAT],[netAmount],[exciseDuty],[vATRate],[vATAmount],[amount]
+			SELECT status,gtin ,internalBuyerCode ,internalSupplierCode ,serialNumber ,orderLineNumber ,typeOfUnit ,description ,comment ,orderedQuantity 
+			,orderedQuantity_unitOfMeasure ,confirmedQuantity ,confirmedQuantity_unitOfMeasure ,onePlaceQuantity ,onePlaceQuantity_unitOfMeasure ,expireDate 
+			,manufactoringDate ,netPrice ,netPriceWithVAT ,netAmount ,exciseDuty ,vATRate ,vATAmount ,amount  
 			FROM #MessageItems
 		OPEN ci
-		FETCH ci INTO @message_ID, @doc_ID --, @doc_Name, @doc_Date, @doc_Type
+		FETCH ci INTO @status,@gtin ,@internalBuyerCode ,@internalSupplierCode ,@serialNumber ,@orderLineNumber ,@typeOfUnit ,@description ,@comment ,@orderedQuantity 
+			,@orderedQuantity_unitOfMeasure ,@confirmedQuantity ,@confirmedQuantity_unitOfMeasure ,@onePlaceQuantity ,@onePlaceQuantity_unitOfMeasure ,@expireDate 
+			,@manufactoringDate ,@netPrice ,@netPriceWithVAT ,@netAmount ,@exciseDuty ,@vATRate ,@vATAmount ,@amount  
+		WHILE @@FETCH_STATUS = 0 BEGIN
+			-- Ищем позицию заявки по GTIN в заявке 
+			SELECT @strqti_ID_orig = strqti_ID 
+			FROM tp_StoreRequestItems 
+			WHERE strqti_strqt_ID = @doc_ID AND strqti_IdentifierCode = @gtin AND strqti_idtp_ID = @idtp_ID_GTIN
 
-		WHILE @@FETCH_STATUS = 0 BEGIN 
+			-- Второй поиск через товарные номенклатуры (если заменили)
 
-			FETCH ci INTO @message_ID, @doc_ID --, @doc_Name, @doc_Date, @doc_Type
+			-- Позиция заявки найдена, нужно обработать статусы
+			IF @strqti_ID_orig IS NOT NULL BEGIN
+				-- Новые значения для заявки
+				SELECT 
+					 @strqti_ID = NEWID()
+					-- ,@strqti_strqt_ID
+					,@strqti_pitm_ID = strqti_pitm_ID
+					,@strqti_meit_ID = strqti_meit_ID
+					,@strqti_strqtist_ID = strqti_strqtist_ID
+					,@strqti_IdentifierCode = strqti_IdentifierCode
+					,@strqti_ItemName = strqti_ItemName
+					,@strqti_Article = strqti_Article
+					,@strqti_idtp_ID = strqti_idtp_ID
+					,@strqti_Remains = strqti_Remains
+					,@strqti_ConsumptionPerDay = strqti_ConsumptionPerDay
+					,@strqti_Volume = strqti_Volume
+					,@strqti_Price = strqti_Price
+					,@strqti_Sum = strqti_Sum
+					,@strqti_VAT = strqti_VAT
+					,@strqti_SumVAT = strqti_SumVAT
+					,@strqti_EditIndex = strqti_EditIndex
+					,@strqti_Comment = strqti_Comment
+					,@strqti_Order = strqti_Order
+					,@meit_Rate = MI.meit_Rate
+				FROM StoreRequestItems  I
+				JOIN ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
+				JOIN tp_MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
+				WHERE strqti_ID = @strqti_ID_orig
+
+				IF @status = 'Changed' BEGIN
+					SET @strqti_Comment = 'Изменено поставщиком: '
+					IF @strqti_Volume <> CONVERT(NUMERIC(18,6), @confirmedQuantity)
+						SET @strqti_Comment = @strqti_Comment + ' Кол-во ['+CONVERT(NVARCHAR(MAX), @strqti_Volume)+'->'+@confirmedQuantity+']'
+					IF @strqti_Price <> CONVERT(NUMERIC(18,6), @netPrice)
+						SET @strqti_Comment = @strqti_Comment + ' Цена ['+CONVERT(NVARCHAR(MAX), @strqti_Price)+'->'+@netPrice+']'
+
+					SELECT
+						 @strqti_Volume = @confirmedQuantity*@meit_Rate
+						,@strqti_Price = @netPrice/@meit_Rate
+						,@strqti_Sum = @netAmount/@meit_Rate
+						,@strqti_VAT = CONVERT(NUMERIC(18,6), @vATRate)/100
+						,@strqti_SumVAT = @vATAmount/@meit_Rate
+				END
+				ELSE IF @status = 'Rejected' BEGIN
+					SELECT 
+						 @strqti_Volume = 0
+						,@strqti_Comment = 'Отвергнута поставщиком'
+				END
+				ELSE IF @status = 'Accepted' BEGIN
+					SELECT 
+						@strqti_Comment = 'Принята поставщиком'
+				END
+				-- Вставляем обработанные значения
+				
+				INSERT INTO StoreRequestItems (strqti_ID,strqti_strqt_ID,strqti_pitm_ID,strqti_meit_ID,strqti_strqtist_ID,strqti_IdentifierCode,strqti_ItemName,strqti_Article,strqti_idtp_ID,strqti_Remains,strqti_ConsumptionPerDay,strqti_Volume,strqti_Price,strqti_Sum,strqti_VAT,strqti_SumVAT,strqti_EditIndex,strqti_Comment,strqti_Order)
+				VALUES (@strqti_ID, @strqt_ID, @strqti_pitm_ID, @strqti_meit_ID, @strqti_strqtist_ID, @strqti_IdentifierCode, @strqti_ItemName, @strqti_Article, @strqti_idtp_ID, @strqti_Remains, @strqti_ConsumptionPerDay, @strqti_Volume, @strqti_Price, @strqti_Sum, @strqti_VAT, @strqti_SumVAT, @strqti_EditIndex, @strqti_Comment, @strqti_Order)
+				
+			END
+			-- Если не нашли позицию заявки
+			ELSE BEGIN
+				EXEC tpsys_RaiseError 50001, 'Не найдена позиция заявки. Пока ошибка, возможно нужно делать создание новой позиции'
+			END
+
+		FETCH ci INTO @status,@gtin ,@internalBuyerCode ,@internalSupplierCode ,@serialNumber ,@orderLineNumber ,@typeOfUnit ,@description ,@comment ,@orderedQuantity 
+			,@orderedQuantity_unitOfMeasure ,@confirmedQuantity ,@confirmedQuantity_unitOfMeasure ,@onePlaceQuantity ,@onePlaceQuantity_unitOfMeasure ,@expireDate 
+			,@manufactoringDate ,@netPrice ,@netPriceWithVAT ,@netAmount ,@exciseDuty ,@vATRate ,@vATAmount ,@amount  
 		END
 
 		CLOSE ci
 		DEALLOCATE ci
+
+		IF EXISTS (
+			SELECT * FROM StoreRequestItems I1
+			LEFT JOIN StoreRequestItems I2 ON I2.strqti_ID = I1.strqti_ID
+			WHERE I1.strqti_strqt_ID = @doc_ID AND I2.strqti_strqt_ID = @strqt_ID AND I2.strqti_ID IS NULL)
+			
+			EXEC tpsys_RaiseError 50001, 'Пришли не все позиции заявки'
 
 /*		BEGIN
 			-- Нет позиции оригинальной заявки, нужно создать новую на основе пришедших данных (наверно и такое может случится)
@@ -222,7 +366,7 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 	    -- Сообщение обработано, удаляем
         SET @cmd = 'DEL /f /q "'+ @full_fname+'"'
-        -- EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
+        EXEC @R = master..xp_cmdshell @cmd, NO_OUTPUT
 
  	    IF @TRANCOUNT = 0 
   	        COMMIT TRAN 
