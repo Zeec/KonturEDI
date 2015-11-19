@@ -9,7 +9,7 @@ INSERT INTO tpsys_TableFields (tpsysf_ID, tpsysf_DateCreate, tpsysf_Name, tpsysf
 VALUES (NEWID(), GETDATE(), 'edi_Status', 'Статус поставщика', 'Статус поставщика', 0)
 
 DECLARE 
-  @mdqu_ID UNIQUEIDENTIFIER = '6DD9B694-5916-2F47-9031-01B956A4238B',
+  @mdqu_ID UNIQUEIDENTIFIER = '78F3C8B6-5375-814D-9A8A-B62353FC012A',
   @mod_ID  UNIQUEIDENTIFIER = '9C6C6733-CC79-4B22-B24E-E9DEB4BB62F1'
 
 IF EXISTS(SELECT * FROM tp_ModuleQueries WHERE mdqu_ID = @mdqu_ID)
