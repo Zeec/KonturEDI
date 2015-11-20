@@ -119,9 +119,9 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 			,n.value('typeOfUnit[1]', 'NVARCHAR(MAX)') AS 'typeOfUnit'
 			,n.value('description[1]', 'NVARCHAR(MAX)') AS 'description'
 			,n.value('comment[1]', 'NVARCHAR(MAX)') AS 'comment'
-			,n.value('orderedQuantity[1]', 'NVARCHAR(MAX)') AS 'orderedQuantity'
+			,n.value('orderedQuantity[1]', 'NUMERIC(18, 6)') AS 'orderedQuantity'
 			,n.value('orderedQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'orderedQuantity_unitOfMeasure'
-			,n.value('confirmedQuantity[1]', 'NVARCHAR(MAX)') AS 'confirmedQuantity'
+			,n.value('confirmedQuantity[1]', 'NUMERIC(18, 6)') AS 'confirmedQuantity'
 			,n.value('confirmedQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'confirmedQuantity_unitOfMeasure'
 			,n.value('onePlaceQuantity[1]', 'NVARCHAR(MAX)') AS 'onePlaceQuantity'
 			,n.value('onePlaceQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'onePlaceQuantity_unitOfMeasure'
@@ -278,17 +278,17 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 
 				IF @status = 'Changed' BEGIN
 					SET @strqti_Comment = 'Изменено поставщиком: '
-					IF @strqti_Volume <> CONVERT(NUMERIC(18,6), @confirmedQuantity)
-						SET @strqti_Comment = @strqti_Comment + ' Кол-во ['+CONVERT(NVARCHAR(MAX), @strqti_Volume)+'->'+@confirmedQuantity+']'
-					IF @strqti_Price <> CONVERT(NUMERIC(18,6), @netPrice)
-						SET @strqti_Comment = @strqti_Comment + ' Цена ['+CONVERT(NVARCHAR(MAX), @strqti_Price)+'->'+@netPrice+']'
+					IF @strqti_Volume <> @confirmedQuantity*@meit_Rate
+						SET @strqti_Comment = @strqti_Comment + ' Кол-во ['+CONVERT(NVARCHAR(MAX), CONVERT(NUMERIC(18,2), @strqti_Volume/@meit_Rate))+'->'+CONVERT(NVARCHAR(MAX), CONVERT(NUMERIC(18,2), @confirmedQuantity))+']'
+					IF @strqti_Price <> @netPrice/@meit_Rate
+						SET @strqti_Comment = @strqti_Comment + ' Цена ['+CONVERT(NVARCHAR(MAX), CONVERT(NUMERIC(18,2), @strqti_Price*@meit_Rate))+'->'+CONVERT(NVARCHAR(MAX), CONVERT(NUMERIC(18,2), @netPrice))+']'
 
 					SELECT
 						 @strqti_Volume = @confirmedQuantity*@meit_Rate
 						,@strqti_Price = @netPrice/@meit_Rate
-						,@strqti_Sum = @netAmount/@meit_Rate
+						,@strqti_Sum = @netAmount
 						,@strqti_VAT = CONVERT(NUMERIC(18,6), @vATRate)/100
-						,@strqti_SumVAT = @vATAmount/@meit_Rate
+						,@strqti_SumVAT = @vATAmount
 				END
 				ELSE IF @status = 'Rejected' BEGIN
 					SELECT 

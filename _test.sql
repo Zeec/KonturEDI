@@ -1,11 +1,31 @@
-return--
+-- return
 --tpsrv_start
 EXEC tpsrv_logon 'sv', '1'
 --BEGIN TRAN
-EXEC external_ImportORDRSP 
+EXEC external_ImportReports
+select * from KonturEDI.dbo.edi_Errors
+return
+-- EXEC external_EDIKontur '152335FE-8572-BE44-882F-C005BB6FE82F'
+
+select * from KonturEDI.dbo.edi_MessagesLog order by log_Date desc
+select * from KonturEDI.dbo.edi_Messages order by doc_Date desc
+select * from KonturEDI.dbo.edi_Errors
+return
+
+SELECT * FROM KonturEDI.dbo.edi_Messages WHERE message_Id = '0E28F8FC-5A81-41B7-883B-8C24D4E1B6C3'
+
+UPDATE KonturEDI.dbo.edi_Messages 
+SET IsProcessed = 0
+where message_ID = 'E194A01B-3F92-439F-B76A-94B14859E606'
 --commit tran
 SELECT * FROM KonturEDI.dbo.edi_Errors
 return
+
+select I.*
+		FROM StoreRequestItems       I --ON I.strqti_strqt_ID = M.doc_ID
+		JOIN ProductItems            P ON P.pitm_ID = I.strqti_pitm_ID
+		JOIN MeasureItems            MI ON MI.meit_ID = strqti_meit_ID
+		where strqti_strqt_ID  = 'F11511BE-4DB7-49E9-908B-A62F39761E5A'
 
 BEGIN TRAN
 EXEC external_EDIKontur '152335FE-8572-BE44-882F-C005BB6FE82F'
@@ -18,7 +38,7 @@ select * from KonturEDI.dbo.edi_Errors
 --EXEC external_PrepareORDERS
 select convert(datetimeoffset, '2015-11-11T08:49:29.911Z+3')
 select convert(datetimeoffset, GETDATE())
-select * from KonturEDI.dbo.edi_MessagesLog order by log_Date desc --WHERE doc_ID ='1AAB28C7-314E-1645-B289-605B226C7CD7'
+ --WHERE doc_ID ='1AAB28C7-314E-1645-B289-605B226C7CD7'
 select top 5 * from KonturEDI.dbo.edi_Messages order by message_creationDateTime desc
 --delete from KonturEDI.dbo.edi_Messages where doc_ID = 'C6E1C66B-A187-6046-AF21-AEFF44CFB677'
 SELECT strqt_ID, strqt_Name, strqt_Date, 'request'
@@ -58,9 +78,7 @@ EXEC master..xp_cmdshell @cmd*/
 
 --select * from KonturEDI.dbo.edi_Messages  WHERE messageId ='5010A02A-BCD3-4BC6-9C9F-5FD320D5F7BD'
 
-/*UPDATE KonturEDI.dbo.edi_Messages 
-SET message_filename = 'C:\Kontur\Outbox\RECADV_1B2E573D-13E5-4C8B-931C-F65A5D8E1546.xml'
-where message_ID = '1B2E573D-13E5-4C8B-931C-F65A5D8E1546'*/
+/**/
 
 --DECLARE @cmd VARCHAR(2000)
 --SET @cmd = 'C:\kontur\actions\get_reports.cmd'

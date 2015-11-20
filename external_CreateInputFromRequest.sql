@@ -15,6 +15,11 @@ CREATE PROCEDURE dbo.external_CreateInputFromRequest (
 	,@idoc_Name NVARCHAR(MAX) OUTPUT
     ,@idoc_Date DATETIME OUTPUT)
 AS
+/* 
+	На вхде ждем таблицу с информацие об отгруке
+	#MessageItems
+*/
+
 
 DECLARE 
      @idoc_ID UNIQUEIDENTIFIER
@@ -71,9 +76,13 @@ CREATE TABLE #StoreRequestItemInputDocumentItems (
 -- Формирование файлов-заказов ORDERS
 BEGIN TRY*/
 
+-- Таблица дял связки, еол-во из отгрузки
 INSERT INTO #StoreRequestItemInputDocumentItems (sriidi_ID, sriidi_strqti_ID, sriidi_idit_ID, sriidi_Volume)
-SELECT NEWID(), strqti_ID, NEWID(), strqti_Volume
-FROM StoreRequestItems
+SELECT NEWID(), strqti_ID, NEWID(), D.despatchedQuantity*MI.meit_Rate -- strqti_Volume
+FROM StoreRequestItems I
+JOIN #MessageItems     D ON D.gtin = I.strqti_IdentifierCode
+JOIN ProductItems      P ON P.pitm_ID = I.strqti_pitm_ID
+JOIN MeasureItems     MI ON MI.meit_ID = strqti_meit_ID
 WHERE strqti_strqt_ID = @strqt_ID
 
 -- Приход
@@ -87,7 +96,7 @@ INSERT INTO InputDocumentItems (idit_ID, idit_idoc_ID, idit_pitm_ID, idit_meit_I
     idit_idtp_ID, idit_IdentifierCode, idit_Volume, idit_Price, idit_Sum, idit_VAT, idit_SumVAT, idit_EditIndex, 
 	idit_Comment, idit_Order)
 SELECT T.sriidi_idit_ID, @idoc_ID, strqti_pitm_ID, strqti_meit_ID, strqti_ItemName, strqti_Article, 
-    strqti_idtp_ID, strqti_IdentifierCode, strqti_Volume, strqti_Price, strqti_Sum, strqti_VAT, strqti_SumVAT, strqti_EditIndex,
+    strqti_idtp_ID, strqti_IdentifierCode, ISNULL(T.sriidi_Volume,0) /*strqti_Volume*/, ISNULL(strqti_Price,0), ISNULL(strqti_Price*T.sriidi_Volume,0), ISNULL(strqti_VAT,0), ISNULL(strqti_Price*strqti_VAT*T.sriidi_Volume,0), strqti_EditIndex,
     strqti_Comment, strqti_Order
 FROM #StoreRequestItemInputDocumentItems T
 JOIN StoreRequestItems                   I ON I.strqti_ID = T.sriidi_strqti_ID

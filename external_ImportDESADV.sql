@@ -91,6 +91,37 @@ WHILE @@FETCH_STATUS = 0 BEGIN
 	  INSERT INTO KonturEDI.dbo.edi_MessagesLog (log_XML, log_Text, message_ID, doc_ID) 
   	  VALUES (@xml, 'Получено уведомление об отгрузке', @message_ID, @doc_ID)
 
+		-- Собираем таблицу с изменениями
+		IF OBJECT_ID('tempdb..#MessageItems') IS NOT NULL 
+			DROP TABLE #MessageItems 
+		
+		SELECT 
+			 n.value('gtin[1]', 'NVARCHAR(MAX)') AS 'gtin' --GTIN товара
+			,n.value('internalBuyerCode[1]', 'NVARCHAR(MAX)') AS 'internalBuyerCode'
+			,n.value('internalSupplierCode[1]', 'NVARCHAR(MAX)') AS 'internalSupplierCode'
+			,n.value('serialNumber[1]', 'NVARCHAR(MAX)') AS 'serialNumber'
+			,n.value('orderLineNumber[1]', 'NVARCHAR(MAX)') AS 'orderLineNumber'
+			,n.value('typeOfUnit[1]', 'NVARCHAR(MAX)') AS 'typeOfUnit'
+			,n.value('description[1]', 'NVARCHAR(MAX)') AS 'description'
+			,n.value('comment[1]', 'NVARCHAR(MAX)') AS 'comment'
+			,n.value('orderedQuantity[1]', 'NVARCHAR(MAX)') AS 'orderedQuantity'
+			,n.value('orderedQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'orderedQuantity_unitOfMeasure'
+			,n.value('despatchedQuantity[1]', 'NUMERIC(18, 6)') AS 'despatchedQuantity'
+			,n.value('despatchedQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'despatchedQuantity_unitOfMeasure'
+			,n.value('onePlaceQuantity[1]', 'NVARCHAR(MAX)') AS 'onePlaceQuantity'
+			,n.value('onePlaceQuantity[1]/@unitOfMeasure', 'NVARCHAR(MAX)') AS 'onePlaceQuantity_unitOfMeasure'
+			,n.value('expireDate[1]', 'NVARCHAR(MAX)') AS 'expireDate'
+			,n.value('manufactoringDate[1]', 'NVARCHAR(MAX)') AS 'manufactoringDate'
+			,n.value('netPrice[1]', 'NUMERIC(18, 6)') AS 'netPrice'
+			,n.value('netPriceWithVAT[1]', 'NUMERIC(18, 6)') AS 'netPriceWithVAT'
+			,n.value('netAmount[1]', 'NUMERIC(18, 6)') AS 'netAmount'
+			,n.value('exciseDuty[1]', 'NUMERIC(18, 6)') AS 'exciseDuty'
+			,n.value('vATRate[1]', 'NUMERIC(18, 6)') AS 'vATRate'
+			,n.value('vATAmount[1]', 'NUMERIC(18, 6)') AS 'vATAmount'
+			,n.value('amount[1]', 'NUMERIC(18, 6)') AS 'amount'
+		INTO #MessageItems
+		FROM @xml.nodes('/eDIMessage/despatchAdvice/lineItems/lineItem') t(n)
+
 	  -- Приходная накладная
 	  EXEC external_CreateInputFromRequest @doc_ID, @despatchAdvice_number, @despatchAdvice_date, @idoc_Name OUTPUT, @idoc_Date OUTPUT
 	  SET @idoc_Name = 'Создана приходная накладная N'+@idoc_Name+' дата'+CONVERT(NVARCHAR(50), @idoc_Date, 104)

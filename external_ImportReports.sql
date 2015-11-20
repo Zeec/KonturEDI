@@ -13,7 +13,7 @@ WITH EXECUTE AS OWNER
 AS
 DECLARE @TRANCOUNT INT
 
-DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
+DECLARE @doc_ID UNIQUEIDENTIFIER, @doc_ID_msg UNIQUEIDENTIFIER, @doc_Type NVARCHAR(100), @messageId UNIQUEIDENTIFIER
 DECLARE @dateTime NVARCHAR(MAX), @description NVARCHAR(MAX)
 
 -- 
@@ -61,7 +61,11 @@ WHILE @@FETCH_STATUS = 0 BEGIN
       SELECT TOP 1 @messageId = messageId, @dateTime = dateTime, @description = description FROM #Messages
 	
       -- Внутренний ID документа в Тиллипад
-	  SELECT @doc_ID = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE message_Id =  @messageId 
+	  SELECT @doc_ID_msg = doc_ID, @doc_Type = doc_Type FROM KonturEDI.dbo.edi_Messages WHERE message_Id =  @messageId 
+
+	  -- ID и документа, возможно уже удален
+	  IF @doc_Type = 'input' SELECT @doc_ID = idoc_ID FROM InputDocuments WHERE idoc_ID = @doc_ID_msg
+	  ELSE IF @doc_Type = 'request' SELECT @doc_ID = strqt_ID FROM StoreRequests WHERE strqt_ID = @doc_ID_msg
 	
 	  IF @doc_ID IS NOT NULL 
 	      EXEC external_UpdateDocStatus @doc_ID, @doc_Type, @description, @dateTime
